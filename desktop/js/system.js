@@ -1,4 +1,3 @@
-
 /* This file is part of Jeedom.
  *
  * Jeedom is free software: you can redistribute it and/or modify
@@ -15,81 +14,105 @@
  * along with Jeedom. If not, see <http://www.gnu.org/licenses/>.
  */
 
+"use strict"
 
+if (!jeeFrontEnd.system) {
+  jeeFrontEnd.system = {
+    init: function() {
+      window.jeeP = this
+      document.querySelectorAll('ul.bs-sidenav li a').forEach(_cmd => {
+        _cmd.title = _cmd.getAttribute('data-command')
+      })
+    },
+  }
+}
 
- $('.bt_systemCommand').off('click').on('click',function(){
- 	var command = $(this).attr('data-command');
- 	$('#pre_commandResult').empty();
- 	if($(this).parent().hasClass('list-group-item-danger')){
- 		bootbox.confirm('{{Etes-vous sûr de vouloir éxécuter cette commande : }}<strong>'+command+'</strong> ? {{Celle-ci est classé en dangereuse}}', function (result) {
- 			if (result) {
- 				jeedom.ssh({
- 					command : command,
- 					success : function(log){
- 						$('#h3_executeCommand').empty().append('{{Commande : }}'+command);
- 						$('#pre_commandResult').append(log);
- 					}
- 				})
- 			}
- 		});
- 	}else{
- 		jeedom.ssh({
- 			command : command,
- 			success : function(log){
- 				$('#h3_executeCommand').empty().append('{{Commande : }}'+command);
- 				$('#pre_commandResult').append(log);
- 			}
- 		})
- 	}
- });
+jeeFrontEnd.system.init()
 
+//Manage events outside parents delegations:
+document.getElementById('bt_validateSpecifiCommand')?.addEventListener('click', function(event) {
+  var command = document.getElementById('in_specificCommand').value
+  document.getElementById('pre_commandResult').empty()
+  jeedom.ssh({
+    command: command,
+    success: function(log) {
+      document.getElementById('h3_executeCommand').empty().append('{{Commande :}}' + ' ' + command)
+      document.getElementById('pre_commandResult').append(log)
+      let insertCmd = '<li class="cursor list-group-item list-group-item-success"><a class="bt_systemCommand" data-command="' + command + '">' + command + '</a></li>'
+      document.getElementById('ul_userListCmdHistory').insertAdjacentHTML('afterbegin', insertCmd)
+      var kids = document.getElementById('ul_userListCmdHistory').children
+      while (kids.length >= 10) {
+        kids[kids.length - 1].remove()
+      }
+    }
+  })
+})
 
- $('#ul_listSystemHistory').off('click','.bt_systemCommand').on('click','.bt_systemCommand',function(){
- 	var command = $(this).attr('data-command');
- 	$('#pre_commandResult').empty();
- 	$('#div_commandResult').empty();
- 	jeedom.ssh({
- 		command : command,
- 		success : function(log){
- 			$('#h3_executeCommand').empty().append('{{Commande : }}'+command);
- 			$('#in_specificCommand').value(command)
- 			$('#pre_commandResult').append(log);
- 		}
- 	})
- });
+document.getElementById('in_specificCommand')?.addEventListener('keyup', function(event) {
+  if (event.which == 13) {
+    var command = document.getElementById('in_specificCommand').value
+    document.getElementById('pre_commandResult').empty()
+    jeedom.ssh({
+      command: command,
+      success: function(log) {
+        document.getElementById('h3_executeCommand').empty().append('{{Commande :}}' + ' ' + command)
+        document.getElementById('pre_commandResult').append(log)
+        let cmd = document.querySelector('.bt_systemCommand[data-command="' + command.replace(/"/g, '\\"') + '"]')
+        if (cmd == null) {
+          let insertCmd = '<li class="cursor list-group-item list-group-item-success"><a class="bt_systemCommand" data-command="' + command.replace(/"/g, '\\"') + '">' + command + '</a></li>'
+          document.getElementById('ul_userListCmdHistory').insertAdjacentHTML('afterbegin', insertCmd)
+        }
+        var kids = document.getElementById('ul_userListCmdHistory').children
+        while (kids.length >= 10) {
+          kids[kids.length - 1].remove()
+        }
+      }
+    })
+  }
+})
 
- $('#bt_validateSpecifiCommand').off('click').on('click',function(){
- 	var command = $('#in_specificCommand').value();
- 	$('#pre_commandResult').empty();
- 	jeedom.ssh({
- 		command : command,
- 		success : function(log){
- 			$('#h3_executeCommand').empty().append('{{Commande : }}'+command);
- 			$('#pre_commandResult').append(log);
- 			$('#ul_listSystemHistory').prepend('<li class="cursor list-group-item list-group-item-success"><a class="bt_systemCommand" data-command="'+command+'">'+command+'</a></li>');
- 			var kids = $('#ul_listSystemHistory').children();
- 			if (kids.length >= 10) {
- 				kids.last().remove();
- 			}
- 		}
- 	})
- });
+/*Events delegations
+*/
+document.getElementById('div_pageContainer').addEventListener('click', function(event) {
+  var _target = null
+  if (_target = event.target.closest('#ul_userListCmdHistory .bt_systemCommand')) {
+    var command = _target.getAttribute('data-command')
+    document.getElementById('pre_commandResult').empty()
+    jeedom.ssh({
+      command: command,
+      success: function(log) {
+        document.getElementById('h3_executeCommand').empty().append('{{Commande :}}' + ' ' + command)
+        document.getElementById('in_specificCommand').value = command
+        document.getElementById('pre_commandResult').append(log)
+      }
+    })
+    return
+  }
 
- $('#in_specificCommand').keypress(function(e) {
- 	if(e.which == 13) {
- 		var command = $('#in_specificCommand').value();
- 		$('#pre_commandResult').empty();
- 		jeedom.ssh({
- 			command : command,
- 			success : function(log){
- 				$('#h3_executeCommand').empty().append('{{Commande : }}'+command);
- 				$('#pre_commandResult').append(log);
- 				$('#ul_listSystemHistory').prepend('<li class="cursor list-group-item list-group-item-success"><a class="bt_systemCommand" data-command="'+command+'">'+command+'</a></li>');
- 				var kids = $('#ul_listSystemHistory').children();
- 				if (kids.length >= 10) {
- 					kids.last().remove();
- 				}
- 			}
- 		})
- 	}
- });
+  if (_target = event.target.closest('#ul_systemListCmd .bt_systemCommand')) {
+    var command = _target.getAttribute('data-command')
+    document.getElementById('pre_commandResult').empty()
+    if (_target.parentNode.hasClass('list-group-item-danger')) {
+      jeeDialog.confirm('{{Êtes-vous sûr de vouloir éxécuter cette commande :}} <strong>' + command + '</strong> ? {{Celle-ci est classé en dangereuse}}', function(result) {
+        if (result) {
+          jeedom.ssh({
+            command: command,
+            success: function(log) {
+              document.getElementById('h3_executeCommand').empty().append('{{Commande :}}' + ' ' + command)
+              document.getElementById('pre_commandResult').append(log)
+            }
+          })
+        }
+      })
+    } else {
+      jeedom.ssh({
+        command: command,
+        success: function(log) {
+          document.getElementById('h3_executeCommand').empty().append('{{Commande :}}' + ' ' + command)
+          document.getElementById('pre_commandResult').append(log)
+        }
+      })
+    }
+    return
+  }
+})

@@ -17,7 +17,7 @@
  */
 
 try {
-	require_once dirname(__FILE__) . '/../../core/php/core.inc.php';
+	require_once __DIR__ . '/../../core/php/core.inc.php';
 	include_file('core', 'authentification', 'php');
 
 	if (!isConnect()) {
@@ -27,6 +27,9 @@ try {
 	ajax::init();
 
 	if (init('action') == 'clearMessage') {
+		if(!isConnect('admin')){
+			throw new Exception(__('Vous n\'êtes pas autorisé à effectuer cette action', __FILE__));
+		}
 		message::removeAll(init('plugin'));
 		ajax::success();
 	}
@@ -41,13 +44,14 @@ try {
 		} else {
 			$messages = utils::o2a(message::byPlugin(init('plugin')));
 		}
-		foreach ($messages as &$message) {
-			$message['message'] = htmlentities($message['message']);
-		}
+		//utils::o2a use message::toArray()
 		ajax::success($messages);
 	}
 
 	if (init('action') == 'removeMessage') {
+		if(!isConnect('admin')){
+			throw new Exception(__('Vous n\'êtes pas autorisé à effectuer cette action', __FILE__));
+		}
 		$message = message::byId(init('id'));
 		if (!is_object($message)) {
 			throw new Exception(__('Message inconnu. Vérifiez l\'ID', __FILE__));
@@ -56,8 +60,8 @@ try {
 		ajax::success();
 	}
 
-	throw new Exception(__('Aucune méthode correspondante à : ', __FILE__) . init('action'));
+	throw new Exception(__('Aucune méthode correspondante à :', __FILE__) . ' ' . init('action'));
 	/*     * *********Catch exeption*************** */
 } catch (Exception $e) {
-	ajax::error(displayExeption($e), $e->getCode());
+	ajax::error(displayException($e), $e->getCode());
 }

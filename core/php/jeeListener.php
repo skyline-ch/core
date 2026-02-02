@@ -1,5 +1,8 @@
 <?php
 
+/** @entrypoint */
+/** @console */
+
 /* This file is part of Jeedom.
  *
  * Jeedom is free software: you can redistribute it and/or modify
@@ -16,29 +19,18 @@
  * along with Jeedom. If not, see <http://www.gnu.org/licenses/>.
  */
 
-if (php_sapi_name() != 'cli' || isset($_SERVER['REQUEST_METHOD']) || !isset($_SERVER['argc'])) {
-	header("Statut: 404 Page non trouvée");
-	header('HTTP/1.0 404 Not Found');
-	$_SERVER['REDIRECT_STATUS'] = 404;
-	echo "<h1>404 Non trouvé</h1>";
-	echo "La page que vous demandez ne peut être trouvée.";
-	exit();
-}
+require_once __DIR__ . '/console.php';
 
-require_once dirname(__FILE__) . "/core.inc.php";
+require_once __DIR__ . "/core.inc.php";
 
-if (isset($argv)) {
-	foreach ($argv as $arg) {
-		$argList = explode('=', $arg);
-		if (isset($argList[0]) && isset($argList[1])) {
-			$_GET[$argList[0]] = $argList[1];
-		}
-	}
+$timelimit = 60;
+if (config::byKey('maxExecTimeScript', 60) != '') {
+	$timelimit = config::byKey('maxExecTimeScript', 60);
 }
-set_time_limit(config::byKey('maxExecTimeScript', 60));
+set_time_limit($timelimit);
 if (init('listener_id') == '') {
 	foreach (cmd::byValue(init('event_id'), 'info') as $cmd) {
-		$cmd->event($cmd->execute(), 2);
+		$cmd->event($cmd->execute(), null, 2);
 	}
 } else {
 	try {
@@ -48,13 +40,11 @@ if (init('listener_id') == '') {
 		}
 		$listener = listener::byId($listener_id);
 		if (!is_object($listener)) {
-			throw new Exception(__('Listener non trouvé : ', __FILE__) . $listener_id);
+			throw new Exception(__('Listener non trouvé :', __FILE__) . ' ' . $listener_id);
 		}
 	} catch (Exception $e) {
-		log::add(init('plugin_id', 'plugin'), 'error', $e->getMessage());
-		die($e->getMessage());
+		log::add(init('plugin_id', 'plugin'), 'error', log::exception($e));
+		die(log::exception($e));
 	}
-	$listener->execute(init('event_id'), init('value'));
+	$listener->execute(init('event_id'), trim(init('value'), "'"), trim(init('datetime'), "'"));
 }
-?>
-

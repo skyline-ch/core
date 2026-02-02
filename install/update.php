@@ -1,58 +1,49 @@
 <?php
 
-/* This file is part of Jeedom.
- *
- * Jeedom is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * Jeedom is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with Jeedom. If not, see <http://www.gnu.org/licenses/>.
- */
+/** @entrypoint */
+/** @console */
 
-if (php_sapi_name() != 'cli' || isset($_SERVER['REQUEST_METHOD']) || !isset($_SERVER['argc'])) {
-	header("Statut: 404 Page non trouvée");
-	header('HTTP/1.0 404 Not Found');
-	$_SERVER['REDIRECT_STATUS'] = 404;
-	echo "<h1>404 Non trouvé</h1>";
-	echo "La page que vous demandez ne peut être trouvée.";
-	exit();
-}
+/* This file is part of Jeedom.
+*
+* Jeedom is free software: you can redistribute it and/or modify
+* it under the terms of the GNU General Public License as published by
+* the Free Software Foundation, either version 3 of the License, or
+* (at your option) any later version.
+*
+* Jeedom is distributed in the hope that it will be useful,
+* but WITHOUT ANY WARRANTY; without even the implied warranty of
+* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+* GNU General Public License for more details.
+*
+* You should have received a copy of the GNU General Public License
+* along with Jeedom. If not, see <http://www.gnu.org/licenses/>.
+*/
+
+require_once dirname(__DIR__) . '/core/php/console.php';
+
 set_time_limit(1800);
 echo "[START UPDATE]\n";
 $starttime = strtotime('now');
-if (isset($argv)) {
-	foreach ($argv as $arg) {
-		$argList = explode('=', $arg);
-		if (isset($argList[0]) && isset($argList[1])) {
-			$_GET[$argList[0]] = $argList[1];
-		}
-	}
-}
 
 $update = false;
 $backup_ok = false;
 $update_begin = false;
 try {
-	require_once dirname(__FILE__) . '/../core/php/core.inc.php';
+	require_once __DIR__ . '/../core/php/core.inc.php';
+	
+	echo "[PROGRESS][1]\n";
 	if (count(system::ps('install/update.php', 'sudo')) > 1) {
-		echo "Mise à jour en cours. J'attendrai 10s avant de recommencer\n";
+		echo "Update in progress. I will wait 10s\n";
 		sleep(10);
 		if (count(system::ps('install/update.php', 'sudo')) > 1) {
-			echo "Mise à jour en cours. Vous devez attendre jusqu'à ce qu'elle finisse avant de redémarrer une nouvelle mise à jour\n";
-			print_r(system::ps('install/update.php', 'sudo'));
+			echo "Update in progress. You need to wait before update\n";
+			json_encode(system::ps('install/update.php', 'sudo')) . "\n";
 			echo "[END UPDATE]\n";
 			die();
 		}
 	}
-	echo "****Mise à jour de jeedom depuis " . jeedom::version() . " (" . date('Y-m-d H:i:s') . ")****\n";
-	echo "Paramètres : " . print_r($_GET, true);
+	echo "****Update from " . jeedom::version() . " (" . date('Y-m-d H:i:s') . ")****\n";
+	echo "Parameters : " . json_encode($_GET) . "\n";
 	$curentVersion = config::byKey('version');
 
 	/*         * ************************MISE A JOUR********************************** */
@@ -82,18 +73,18 @@ try {
 			echo '***ERROR***' . $e->getMessage();
 		}
 	}
-
+	echo "[PROGRESS][5]\n";
 	try {
 		echo "Check rights...";
-		jeedom::cleanFileSytemRight();
+		if(method_exists('jeedom','cleanFileSystemRight')){
+			jeedom::cleanFileSystemRight();
+		}
 		echo "OK\n";
 	} catch (Exception $e) {
 		echo '***ERROR***' . $e->getMessage();
 	}
 	if (init('backup::before') == 1 && init('force') != 1) {
 		try {
-			global $NO_PLUGIN_BACKUP;
-			$NO_PLUGIN_BACKUP = true;
 			global $NO_CLOUD_BACKUP;
 			$NO_CLOUD_BACKUP = true;
 			jeedom::backup();
@@ -106,33 +97,37 @@ try {
 		}
 		$backup_ok = true;
 	}
+	echo "[PROGRESS][10]\n";
+
+	echo "[PROGRESS][12]\n";
+
 	if (init('core', 1) == 1) {
 		if (init('mode') == 'force') {
 			echo "/!\ Force update /!\ \n";
 		}
-		jeedom::stop();
+		echo "[PROGRESS][15]\n";
 		if (init('update::reapply') == '' && config::byKey('update::allowCore', 'core', 1) != 0) {
-			try {
-				echo 'Clean temporary file (tmp)...';
-				shell_exec('rm -rf ' . dirname(__FILE__) . '/../install/update/*');
-				echo "OK\n";
-			} catch (Exception $e) {
-				echo '***ERROR*** ' . $e->getMessage() . "\n";
-			}
 			$tmp_dir = jeedom::getTmpFolder('install');
 			$tmp = $tmp_dir . '/jeedom_update.zip';
 			try {
 				if (config::byKey('core::repo::provider') == 'default') {
-					$url = 'https://github.com/jeedom/core/archive/' . config::byKey('core::branch') . '.zip';
+					if(strpos(config::byKey('core::branch'),'tag::') === 0){
+						$url = 'https://github.com/jeedom/core/archive/refs/tags/'.str_replace('tag::','',config::byKey('core::branch')).'.zip';
+					}else{
+						$url = 'https://github.com/jeedom/core/archive/' . config::byKey('core::branch') . '.zip';
+					}
 					echo "Download url : " . $url . "\n";
 					echo "Download in progress...";
 					if (!is_writable($tmp_dir)) {
-						throw new Exception('Can not write : ' . $tmp . '. Please execute : chmod 777 -R ' . $tmp_dir);
+						shell_exec('sudo chmod 777 -R ' . $tmp_dir);
+					}
+					if (!is_writable($tmp_dir)) {
+						throw new Exception('Can not write : ' . $tmp . '. Please execute : sudo chmod 777 -R ' . $tmp_dir);
 					}
 					if (file_exists($tmp)) {
 						unlink($tmp);
 					}
-					exec('wget --no-check-certificate --progress=dot --dot=mega ' . $url . ' -O ' . $tmp);
+					exec('wget --progress=dot --dot=mega ' . $url . ' -O ' . $tmp);
 				} else {
 					$class = 'repo_' . config::byKey('core::repo::provider');
 					if (!class_exists($class)) {
@@ -146,62 +141,139 @@ try {
 					}
 					$class::downloadCore($tmp);
 				}
+				echo "[PROGRESS][25]\n";
 				if (filesize($tmp) < 100) {
 					throw new Exception('Download failed please retry later');
 				}
 				echo "OK\n";
-				echo "Cleaning folder...";
-				$cibDir = jeedom::getTmpFolder('install/unzip');
+				echo "Cleaning folders...";
+				$cibDir = '/tmp/jeedom_unzip';
 				if (file_exists($cibDir)) {
 					rrmdir($cibDir);
 				}
 				echo "OK\n";
+				echo "[PROGRESS][30]\n";
 				echo "Create temporary folder...";
 				if (!file_exists($cibDir) && !mkdir($cibDir, 0777, true)) {
 					throw new Exception('Can not write into  : ' . $cibDir . '.');
 				}
 				echo "OK\n";
+				echo "[PROGRESS][35]\n";
 				echo "Unzip in progress...";
 				$zip = new ZipArchive;
-				if ($zip->open($tmp) === TRUE) {
+                $open = $zip->open($tmp);
+				if ($open === TRUE) {
 					if (!$zip->extractTo($cibDir)) {
-						throw new Exception('Can not unzip file');
+						throw new Exception('Can not unzip file => '.$zip->getStatusString());
 					}
 					$zip->close();
 				} else {
-					throw new Exception('Unable to unzip file : ' . $tmp);
+					throw new Exception('Unable to unzip file : ' . $tmp.' =>'.$open);
 				}
 				echo "OK\n";
-
+				if (disk_free_space($cibDir) < 10) {
+					throw new Exception('Error no more free space on ' . $cibDir . '. Free space : ' . disk_free_space($cibDir));
+				}
+				echo "[PROGRESS][40]\n";
 				if (!file_exists($cibDir . '/core')) {
 					$files = ls($cibDir, '*');
 					if (count($files) == 1 && file_exists($cibDir . '/' . $files[0] . 'core')) {
 						$cibDir = $cibDir . '/' . $files[0];
 					}
 				}
-
+				
 				if (init('preUpdate') == 1) {
 					echo "Update updater...";
-					rmove($cibDir . '/install/update.php', dirname(__FILE__) . '/update.php', false, array(), true);
+					rmove($cibDir . '/install/update.php', __DIR__ . '/update.php', false, array(), array('log' => true, 'ignoreFileSizeUnder' => 1));
 					echo "OK\n";
-					echo "Remove temporary file...";
+					echo "Remove temporary files...";
 					rrmdir($tmp_dir);
 					echo "OK\n";
 					echo "Wait 10s before relaunch update\n";
 					sleep(10);
 					$_GET['preUpdate'] = 0;
 					jeedom::update($_GET);
+					echo "[PROGRESS][100]\n";
 					die();
 				}
+				try {
+					echo 'Clean temporary files (tmp)...';
+					shell_exec('rm -rf ' . __DIR__ . '/../install/update/*');
+					shell_exec('rm -rf ' . __DIR__ . '/../doc');
+					shell_exec('rm -rf ' . __DIR__ . '/../docs');
+					shell_exec('rm -rf ' . __DIR__ . '/../support');
+					shell_exec('rm -rf ' . __DIR__ . '/../core/template/*');
+					shell_exec('rm -rf ' . __DIR__ . '/../core/themes/*');
+					echo "OK\n";
+				} catch (Exception $e) {
+					echo '***ERROR*** ' . $e->getMessage() . "\n";
+				}
+				jeedom::stop();
+				echo "[PROGRESS][45]\n";
 
-				echo "Moving file...";
+				echo "Remove vendor folder (not use anymore)...";
+				shell_exec('rm -rf ' . $cibDir . '/vendor');
+				echo "OK\n";
+				echo "[PROGRESS][46]\n";
+				
+				echo "Update modification date of unzip file...";
+				shell_exec('find '.$cibDir.'/ -exec touch {} +');
+				echo "OK\n";
+				echo "[PROGRESS][47]\n";
+
+				echo "Moving files...";
 				$update_begin = true;
-				rmove($cibDir . '/', dirname(__FILE__) . '/../', false, array(), true);
+				$file_copy = array();
+				rmove($cibDir . '/', __DIR__ . '/../', false, array(), true, array('log' => true, 'ignoreFileSizeUnder' => 1));
 				echo "OK\n";
-				echo "Remove temporary file...";
+				echo "[PROGRESS][50]\n";
+				echo "Remove temporary files...";
 				rrmdir($tmp_dir);
+				try {
+					shell_exec('rm -rf ' . __DIR__ . '/../.travis.yml');
+					shell_exec('rm -rf ' . __DIR__ . '/../phpunit.xml.dist');
+				} catch (Exception $e) {
+					echo '***ERROR*** ' . $e->getMessage() . "\n";
+				}
 				echo "OK\n";
-				config::save('update::lastDateCore', date('Y-m-d H:i:s'));
+				echo "[PROGRESS][52]\n";
+				if(strpos(config::byKey('core::branch'),'tag::') !== 0){
+					echo "Remove useless files...\n";
+					foreach (array('3rdparty', 'desktop', 'mobile', 'core', 'docs', 'install', 'script') as $folder) {
+						echo 'Cleaning ' . $folder . "\n";
+						shell_exec('find ' . __DIR__ . '/../' . $folder . '/* -mtime +30 -type f ! -iname "custom.*" ! -iname "common.config.php" -delete');
+					}
+					echo "OK\n";
+				}
+				echo "[PROGRESS][53]\n";
+				if (exec('which composer | wc -l') == 0) {
+					echo "\nNeed to install composer...";
+					echo shell_exec(system::getCmdSudo().' ' . __DIR__ . '/../resources/install_composer.sh');
+					echo "OK\n";
+				}
+				echo "Update composer file...\n";
+				if (exec('which composer | wc -l') > 0) {
+					shell_exec(system::getCmdSudo(). ' rm '. __DIR__ . '/../composer.lock');
+					shell_exec('export COMPOSER_HOME="/tmp/composer";export COMPOSER_ALLOW_SUPERUSER=1;'.system::getCmdSudo().' composer self-update > /dev/null 2>&1');
+					shell_exec('cd ' . __DIR__ . '/../;export COMPOSER_ALLOW_SUPERUSER=1;export COMPOSER_HOME="/tmp/composer";'.system::getCmdSudo().' composer update --no-interaction --no-plugins --no-scripts --no-ansi --no-dev --no-progress --optimize-autoloader --with-all-dependencies --no-cache > /dev/null 2>&1');
+					shell_exec(system::getCmdSudo().' rm /tmp/composer 2>/dev/null');
+					if(method_exists('jeedom','cleanFileSystemRight')){
+						jeedom::cleanFileSystemRight();
+					}
+				}
+				echo "OK\n";
+				echo "[PROGRESS][58]\n";
+				echo "Update jeedom information date...\n";
+				try {
+					$update = update::byLogicalId('jeedom');
+					if (is_object($update) && method_exists($update, 'setUpdateDate')) {
+						$update->setUpdateDate(date('Y-m-d H:i:s'));
+						$update->save();
+					}
+				} catch (\Exception $e) {
+				}
+				echo "OK\n";
+				echo "[PROGRESS][59]\n";
 			} catch (Exception $e) {
 				if (init('force') != 1) {
 					throw $e;
@@ -209,53 +281,12 @@ try {
 					echo '***ERROR***' . $e->getMessage();
 				}
 			}
+		} else {
+			jeedom::stop();
 		}
-
+		echo "[PROGRESS][60]\n";
 		if (init('update::reapply') != '') {
-			$updateSql = dirname(__FILE__) . '/update/' . init('update::reapply') . '.sql';
-			if (file_exists($updateSql)) {
-				try {
-					echo "Disable constraint...";
-					$sql = "SET @OLD_UNIQUE_CHECKS=@@UNIQUE_CHECKS, UNIQUE_CHECKS=0;
-                                SET @OLD_FOREIGN_KEY_CHECKS=@@FOREIGN_KEY_CHECKS, FOREIGN_KEY_CHECKS=0;
-                                SET @OLD_SQL_MODE=@@SQL_MODE, SQL_MODE='TRADITIONAL,ALLOW_INVALID_DATES';";
-					DB::Prepare($sql, array(), DB::FETCH_TYPE_ROW);
-					echo "OK\n";
-				} catch (Exception $e) {
-					if (init('force') != 1) {
-						throw $e;
-					} else {
-						echo '***ERROR***' . $e->getMessage();
-					}
-				}
-				try {
-					echo "Update database into : " . init('update::reapply') . "\n";
-					$sql = file_get_contents($updateSql);
-					DB::Prepare($sql, array(), DB::FETCH_TYPE_ROW);
-					echo "OK\n";
-				} catch (Exception $e) {
-					if (init('force') != 1) {
-						throw $e;
-					} else {
-						echo '***ERROR***' . $e->getMessage();
-					}
-				}
-				try {
-					echo "Enable constraint...";
-					$sql = "SET SQL_MODE=@OLD_SQL_MODE;
-                                SET FOREIGN_KEY_CHECKS=@OLD_FOREIGN_KEY_CHECKS;
-                                SET UNIQUE_CHECKS=@OLD_UNIQUE_CHECKS;";
-					DB::Prepare($sql, array(), DB::FETCH_TYPE_ROW);
-					echo "OK\n";
-				} catch (Exception $e) {
-					if (init('force') != 1) {
-						throw $e;
-					} else {
-						echo '***ERROR***' . $e->getMessage();
-					}
-				}
-			}
-			$updateScript = dirname(__FILE__) . '/update/' . init('update::reapply') . '.php';
+			$updateScript = __DIR__ . '/update/' . init('update::reapply') . '.php';
 			if (file_exists($updateScript)) {
 				try {
 					echo "Update system into : " . init('update::reapply') . "\n";
@@ -273,50 +304,7 @@ try {
 		} else {
 			while (version_compare(jeedom::version(), $curentVersion, '>')) {
 				$nextVersion = incrementVersion($curentVersion);
-				$updateSql = dirname(__FILE__) . '/update/' . $nextVersion . '.sql';
-				if (file_exists($updateSql)) {
-					try {
-						echo "Disable constraint...";
-						$sql = "SET @OLD_UNIQUE_CHECKS=@@UNIQUE_CHECKS, UNIQUE_CHECKS=0;
-                                    SET @OLD_FOREIGN_KEY_CHECKS=@@FOREIGN_KEY_CHECKS, FOREIGN_KEY_CHECKS=0;
-                                    SET @OLD_SQL_MODE=@@SQL_MODE, SQL_MODE='TRADITIONAL,ALLOW_INVALID_DATES';";
-						DB::Prepare($sql, array(), DB::FETCH_TYPE_ROW);
-						echo "OK\n";
-					} catch (Exception $e) {
-						if (init('force') != 1) {
-							throw $e;
-						} else {
-							echo '***ERROR***' . $e->getMessage();
-						}
-					}
-					try {
-						echo "Update database into : " . $nextVersion . "...";
-						$sql = file_get_contents($updateSql);
-						DB::Prepare($sql, array(), DB::FETCH_TYPE_ROW);
-						echo "OK\n";
-					} catch (Exception $e) {
-						if (init('force') != 1) {
-							throw $e;
-						} else {
-							echo '***ERREUR*** ' . $e->getMessage();
-						}
-					}
-					try {
-						echo "Enable constraint...";
-						$sql = "SET SQL_MODE=@OLD_SQL_MODE;
-                                    SET FOREIGN_KEY_CHECKS=@OLD_FOREIGN_KEY_CHECKS;
-                                    SET UNIQUE_CHECKS=@OLD_UNIQUE_CHECKS;";
-						DB::Prepare($sql, array(), DB::FETCH_TYPE_ROW);
-						echo "OK\n";
-					} catch (Exception $e) {
-						if (init('force') != 1) {
-							throw $e;
-						} else {
-							echo '***ERROR***' . $e->getMessage();
-						}
-					}
-				}
-				$updateScript = dirname(__FILE__) . '/update/' . $nextVersion . '.php';
+				$updateScript = __DIR__ . '/update/' . $nextVersion . '.php';
 				if (file_exists($updateScript)) {
 					try {
 						echo "Update system into : " . $nextVersion . "...";
@@ -335,11 +323,11 @@ try {
 			}
 		}
 		try {
-			echo "Check jeedom consistency...";
-			require_once dirname(__FILE__) . '/consistency.php';
+			echo "Check jeedom consistency...\n";
+			require_once __DIR__ . '/consistency.php';
 			echo "OK\n";
 		} catch (Exception $ex) {
-			echo "***ERREUR*** " . $ex->getMessage() . "\n";
+			echo "***ERROR*** " . $ex->getMessage() . "\n";
 		}
 		try {
 			echo "Check update...";
@@ -347,30 +335,33 @@ try {
 			config::save('version', jeedom::version());
 			echo "OK\n";
 		} catch (Exception $ex) {
-			echo "***ERREUR*** " . $ex->getMessage() . "\n";
+			echo "***ERROR*** " . $ex->getMessage() . "\n";
 		}
 		echo "***************Jeedom is up to date in " . jeedom::version() . "***************\n";
 	}
+	echo "[PROGRESS][75]\n";
 	if (init('plugins', 1) == 1) {
 		echo "***************Update plugins***************\n";
 		update::updateAll();
 		echo "***************Update plugin successfully***************\n";
 	}
+	echo "[PROGRESS][90]\n";
 	try {
 		message::removeAll('update', 'newUpdate');
 		echo "Check update\n";
 		update::checkAllUpdate();
 		echo "OK\n";
 	} catch (Exception $ex) {
-		echo "***ERREUR*** " . $ex->getMessage() . "\n";
+		echo "***ERROR*** " . $ex->getMessage() . "\n";
 	}
+	echo "[PROGRESS][95]\n";
 	try {
 		jeedom::start();
 	} catch (Exception $ex) {
-		echo "***ERREUR*** " . $ex->getMessage() . "\n";
+		echo "***ERROR*** " . $ex->getMessage() . "\n";
 	}
-
 	config::save('version', jeedom::version());
+	echo "[PROGRESS][100]\n";
 } catch (Exception $e) {
 	if ($update) {
 		if ($backup_ok && $update_begin) {
@@ -392,7 +383,6 @@ try {
 	}
 	echo "OK\n";
 } catch (Exception $e) {
-
 }
 
 try {
@@ -400,7 +390,6 @@ try {
 	jeedom::event('end_update');
 	echo "OK\n";
 } catch (Exception $e) {
-
 }
 echo "Update duration : " . (strtotime('now') - $starttime) . "s\n";
 echo "[END UPDATE SUCCESS]\n";

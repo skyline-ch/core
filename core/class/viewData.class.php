@@ -1,23 +1,23 @@
 <?php
 
 /* This file is part of Jeedom.
- *
- * Jeedom is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * Jeedom is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with Jeedom. If not, see <http://www.gnu.org/licenses/>.
- */
+*
+* Jeedom is free software: you can redistribute it and/or modify
+* it under the terms of the GNU General Public License as published by
+* the Free Software Foundation, either version 3 of the License, or
+* (at your option) any later version.
+*
+* Jeedom is distributed in the hope that it will be useful,
+* but WITHOUT ANY WARRANTY; without even the implied warranty of
+* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+* GNU General Public License for more details.
+*
+* You should have received a copy of the GNU General Public License
+* along with Jeedom. If not, see <http://www.gnu.org/licenses/>.
+*/
 
 /* * ***************************Includes********************************* */
-require_once dirname(__FILE__) . '/../../core/php/core.inc.php';
+require_once __DIR__ . '/../../core/php/core.inc.php';
 
 class viewData {
 	/*     * *************************Attributs****************************** */
@@ -28,12 +28,13 @@ class viewData {
 	private $type;
 	private $link_id;
 	private $configuration;
+	private $_changed = false;
 
 	/*     * ***********************Methode static*************************** */
 
 	public static function all() {
 		$sql = 'SELECT ' . DB::buildField(__CLASS__) . '
-                FROM viewData';
+		FROM viewData';
 		return DB::Prepare($sql, array(), DB::FETCH_TYPE_ALL, PDO::FETCH_CLASS, __CLASS__);
 	}
 
@@ -42,8 +43,8 @@ class viewData {
 			'id' => $_id,
 		);
 		$sql = 'SELECT ' . DB::buildField(__CLASS__) . '
-                FROM viewData
-                WHERE id=:id';
+		FROM viewData
+		WHERE id=:id';
 		return DB::Prepare($sql, $value, DB::FETCH_TYPE_ROW, PDO::FETCH_CLASS, __CLASS__);
 	}
 
@@ -53,10 +54,10 @@ class viewData {
 			'link_id' => $_link_id,
 		);
 		$sql = 'SELECT ' . DB::buildField(__CLASS__) . '
-                FROM viewData
-                WHERE type=:type
-                    AND link_id=:link_id
-                ORDER BY `order`';
+		FROM viewData
+		WHERE type=:type
+		AND link_id=:link_id
+		ORDER BY `order`';
 		return DB::Prepare($sql, $value, DB::FETCH_TYPE_ALL, PDO::FETCH_CLASS, __CLASS__);
 	}
 
@@ -65,9 +66,9 @@ class viewData {
 			'viewZone_id' => $_viewZone_id,
 		);
 		$sql = 'SELECT ' . DB::buildField(__CLASS__) . '
-                FROM viewData
-                WHERE viewZone_id=:viewZone_id
-                ORDER BY `order`';
+		FROM viewData
+		WHERE viewZone_id=:viewZone_id
+		ORDER BY `order`';
 		return DB::Prepare($sql, $value, DB::FETCH_TYPE_ALL, PDO::FETCH_CLASS, __CLASS__);
 	}
 
@@ -76,8 +77,8 @@ class viewData {
 			'search' => '%' . $_search . '%',
 		);
 		$sql = 'SELECT ' . DB::buildField(__CLASS__) . '
-                FROM viewData
-                WHERE configuration LIKE :search';
+		FROM viewData
+		WHERE configuration LIKE :search';
 		return DB::Prepare($sql, $value, DB::FETCH_TYPE_ALL, PDO::FETCH_CLASS, __CLASS__);
 	}
 
@@ -90,6 +91,10 @@ class viewData {
 	}
 
 	/*     * *********************Methode d'instance************************* */
+
+	public function refresh() {
+		DB::refresh($this);
+	}
 
 	public function save() {
 		return DB::save($this);
@@ -109,8 +114,9 @@ class viewData {
 		return $this->id;
 	}
 
-	public function setId($id) {
-		$this->id = $id;
+	public function setId($_id) {
+		$this->_changed = utils::attrChanged($this->_changed, $this->id, $_id);
+		$this->id = $_id;
 		return $this;
 	}
 
@@ -118,8 +124,9 @@ class viewData {
 		return $this->order;
 	}
 
-	public function setOrder($order) {
-		$this->order = $order;
+	public function setOrder($_order) {
+		$this->_changed = utils::attrChanged($this->_changed, $this->order, $_order);
+		$this->order = $_order;
 		return $this;
 	}
 
@@ -127,8 +134,9 @@ class viewData {
 		return $this->viewZone_id;
 	}
 
-	public function setviewZone_id($viewZone_id) {
-		$this->viewZone_id = $viewZone_id;
+	public function setviewZone_id($_viewZone_id) {
+		$this->_changed = utils::attrChanged($this->_changed, $this->viewZone_id, $_viewZone_id);
+		$this->viewZone_id = $_viewZone_id;
 		return $this;
 	}
 
@@ -136,8 +144,9 @@ class viewData {
 		return $this->type;
 	}
 
-	public function setType($type) {
-		$this->type = $type;
+	public function setType($_type) {
+		$this->_changed = utils::attrChanged($this->_changed, $this->type, $_type);
+		$this->type = $_type;
 		return $this;
 	}
 
@@ -145,8 +154,9 @@ class viewData {
 		return $this->link_id;
 	}
 
-	public function setLink_id($link_id) {
-		$this->link_id = $link_id;
+	public function setLink_id($_link_id) {
+		$this->_changed = utils::attrChanged($this->_changed, $this->link_id, $_link_id);
+		$this->link_id = $_link_id;
 		return $this;
 	}
 
@@ -159,28 +169,22 @@ class viewData {
 	}
 
 	public function getConfiguration($_key = '', $_default = '') {
-		if ($this->configuration == '') {
-			return $_default;
-		}
-		if (@json_decode($this->configuration, true)) {
-			if ($_key == '') {
-				return json_decode($this->configuration, true);
-			}
-			$options = json_decode($this->configuration, true);
-			return (isset($options[$_key])) ? $options[$_key] : $_default;
-		}
-		return $_default;
+		return utils::getJsonAttr($this->configuration, $_key, $_default);
 	}
 
 	public function setConfiguration($_key, $_value) {
-		if ($this->configuration == '' || !@json_decode($this->configuration, true)) {
-			$this->configuration = json_encode(array($_key => $_value));
-		} else {
-			$options = json_decode($this->configuration, true);
-			$options[$_key] = $_value;
-			$this->configuration = json_encode($options);
-		}
+		$configuration = utils::setJsonAttr($this->configuration, $_key, $_value);
+		$this->_changed = utils::attrChanged($this->_changed, $this->configuration, $configuration);
+		$this->configuration = $configuration;
 		return $this;
 	}
 
+	public function getChanged() {
+		return $this->_changed;
+	}
+
+	public function setChanged($_changed) {
+		$this->_changed = $_changed;
+		return $this;
+	}
 }

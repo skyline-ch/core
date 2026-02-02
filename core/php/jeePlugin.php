@@ -1,5 +1,8 @@
 <?php
 
+/** @entrypoint */
+/** @console */
+
 /* This file is part of Jeedom.
  *
  * Jeedom is free software: you can redistribute it and/or modify
@@ -16,16 +19,9 @@
  * along with Jeedom. If not, see <http://www.gnu.org/licenses/>.
  */
 
-if (php_sapi_name() != 'cli' || isset($_SERVER['REQUEST_METHOD']) || !isset($_SERVER['argc'])) {
-	header("Statut: 404 Page non trouvée");
-	header('HTTP/1.0 404 Not Found');
-	$_SERVER['REDIRECT_STATUS'] = 404;
-	echo "<h1>404 Non trouvé</h1>";
-	echo "La page que vous demandez ne peut être trouvée.";
-	exit();
-}
+require_once __DIR__ . '/console.php';
 
-require_once dirname(__FILE__) . "/core.inc.php";
+require_once __DIR__ . "/core.inc.php";
 
 if (isset($argv)) {
 	foreach ($argv as $arg) {
@@ -36,7 +32,7 @@ if (isset($argv)) {
 	}
 }
 try {
-	set_time_limit(config::byKey('maxExecTimeScript', 10));
+	set_time_limit(config::byKey('maxExecTimeScript', 'core', 10));
 
 	$plugin_id = init('plugin_id');
 	if ($plugin_id == '') {
@@ -44,7 +40,7 @@ try {
 	}
 	$plugin = plugin::byId($plugin_id);
 	if (!is_object($plugin)) {
-		throw new Exception(__('Plugin non trouvé : ', __FILE__) . init('plugin_id'));
+		throw new Exception(__('Plugin non trouvé :', __FILE__) . ' ' . init('plugin_id'));
 	}
 	$function = init('function');
 	if ($function == '') {
@@ -54,14 +50,11 @@ try {
 		$plugin->callInstallFunction($function, true);
 	} else {
 		if (!class_exists($plugin_id) || !method_exists($plugin_id, $function)) {
-			throw new Exception(__('Il n\'existe aucune méthode : ', __FILE__) . $plugin_id . '::' . $function);
+			throw new Exception(__('Il n\'existe aucune méthode :', __FILE__) . ' ' . $plugin_id . '::' . $function);
 		}
 		$plugin_id::$function();
 	}
 } catch (Exception $e) {
-	log::add(init('plugin_id', 'plugin'), 'error', $e->getMessage());
-	die($e->getMessage());
+	log::add(init('plugin_id', 'plugin'), 'error', log::exception($e));
+	die(log::exception($e));
 }
-?>
-
-

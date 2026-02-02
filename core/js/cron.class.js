@@ -1,4 +1,3 @@
-
 /* This file is part of Jeedom.
  *
  * Jeedom is free software: you can redistribute it and/or modify
@@ -15,9 +14,7 @@
  * along with Jeedom. If not, see <http://www.gnu.org/licenses/>.
  */
 
-
-jeedom.cron = function() {
-};
+jeedom.cron = function() {};
 
 jeedom.cron.setState = function(_params) {
     var paramsRequired = ['id', 'state'];
@@ -28,16 +25,15 @@ jeedom.cron.setState = function(_params) {
         (_params.error || paramsSpecifics.error || jeedom.private.default_params.error)(e);
         return;
     }
-    var params = $.extend({}, jeedom.private.default_params, paramsSpecifics, _params || {});
+    var params = domUtils.extend({}, jeedom.private.default_params, paramsSpecifics, _params || {});
     var paramsAJAX = jeedom.private.getParamsAJAX(params);
     paramsAJAX.url = 'core/ajax/cron.ajax.php';
     paramsAJAX.data = {
         action: _params.state,
         id: _params.id
     };
-    $.ajax(paramsAJAX);
+    domUtils.ajax(paramsAJAX);
 }
-
 
 jeedom.cron.all = function(_params) {
     var paramsRequired = [];
@@ -48,13 +44,13 @@ jeedom.cron.all = function(_params) {
         (_params.error || paramsSpecifics.error || jeedom.private.default_params.error)(e);
         return;
     }
-    var params = $.extend({}, jeedom.private.default_params, paramsSpecifics, _params || {});
+    var params = domUtils.extend({}, jeedom.private.default_params, paramsSpecifics, _params || {});
     var paramsAJAX = jeedom.private.getParamsAJAX(params);
     paramsAJAX.url = 'core/ajax/cron.ajax.php';
     paramsAJAX.data = {
         action: 'all'
     };
-    $.ajax(paramsAJAX);
+    domUtils.ajax(paramsAJAX);
 }
 
 jeedom.cron.save = function(_params) {
@@ -66,13 +62,12 @@ jeedom.cron.save = function(_params) {
         (_params.error || paramsSpecifics.error || jeedom.private.default_params.error)(e);
         return;
     }
-    var params = $.extend({}, jeedom.private.default_params, paramsSpecifics, _params || {});
+    var params = domUtils.extend({}, jeedom.private.default_params, paramsSpecifics, _params || {});
     var paramsAJAX = jeedom.private.getParamsAJAX(params);
     paramsAJAX.url = 'core/ajax/cron.ajax.php';
     paramsAJAX.data = {
         action: 'save',
-        crons: json_encode(_params.crons),
+        crons: JSON.stringify(_params.crons),
     };
-    $.ajax(paramsAJAX);
+    domUtils.ajax(paramsAJAX);
 }
-

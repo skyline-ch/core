@@ -36,9 +36,9 @@ class jsonrpcClient {
 
 	/**
 	 *
-	 * @param type $_apiAddr
-	 * @param type $_apikey
-	 * @param type $_options
+	 * @param string $_apiAddr
+	 * @param string $_apikey
+	 * @param array $_options
 	 */
 	public function __construct($_apiAddr, $_apikey, $_options = array()) {
 		$this->apiAddr = $_apiAddr;
@@ -47,10 +47,10 @@ class jsonrpcClient {
 	}
 	/**
 	 *
-	 * @param type $_method
+	 * @param string $_method
 	 * @param array $_params
 	 * @param int $_timeout
-	 * @param type $_file
+	 * @param mixed $_file
 	 * @param int $_maxRetry
 	 * @return boolean
 	 */
@@ -78,19 +78,18 @@ class jsonrpcClient {
 			return false;
 		}
 		$result = json_decode(trim($this->rawResult), true);
-
 		if (isset($result['result'])) {
 			$this->result = $result['result'];
 			if ($this->getCb_class() != '') {
 				$callback_class = $this->getCb_class();
 				$callback_function = $this->getCb_function();
 				if (method_exists($callback_class, $callback_function)) {
-					$callback_class::$callback_function($this->result);
+					$callback_class::$callback_function($result);
 				}
 			} elseif ($this->getCb_function() != '') {
 				$callback_function = $this->getCb_function();
 				if (function_exists($callback_function)) {
-					$callback_function($this->result);
+					$callback_function($result);
 				}
 			}
 			return true;
@@ -139,6 +138,21 @@ class jsonrpcClient {
 				curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
 				curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false);
 			}
+			if(config::byKey('proxyEnabled')) {
+				if(config::byKey('proxyAddress') == ''){ 
+				// throw new Exception(__('renseigne l\'adresse', __FILE__));
+				$this->error = 'Erreur address ';
+			} else if (config::byKey('proxyPort') == ''){
+			// throw new Exception(__('renseigne le port', __FILE__));
+			} else {
+				curl_setopt($ch, CURLOPT_PROXY, config::byKey('proxyAddress'));
+				curl_setopt($ch, CURLOPT_PROXYPORT, config::byKey('proxyPort'));
+				if(!empty(config::byKey('proxyLogin') || config::byKey('proxyPassword'))){
+					curl_setopt($ch, CURLOPT_PROXYUSERPWD, 'proxyLogin:proxyPassword');
+				}
+				log::add('Connection', 'debug', $ch);
+			} 
+		}
 			$response = curl_exec($ch);
 			$http_status = curl_getinfo($ch, CURLINFO_HTTP_CODE);
 			$nbRetry++;
@@ -161,7 +175,7 @@ class jsonrpcClient {
 		if (curl_errno($ch)) {
 			$this->error = 'Erreur curl sur : ' . $this->apiAddr . '. Détail :' . curl_error($ch);
 		}
-		curl_close($ch);
+		unset($ch);
 		return $response;
 	}
 

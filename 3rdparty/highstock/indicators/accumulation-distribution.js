@@ -1,11 +1,14 @@
 /*
-  Highcharts JS v6.0.4 (2017-12-15)
+ Highstock JS v10.3.2 (2022-11-28)
 
- Indicator series type for Highstock
+ Indicator series type for Highcharts Stock
 
- (c) 2010-2017 Sebastian Bochan
+ (c) 2010-2021 Sebastian Bochan
 
  License: www.highcharts.com/license
 */
-(function(c){"object"===typeof module&&module.exports?module.exports=c:c(Highcharts)})(function(c){(function(c){var l=c.seriesType;l("ad","sma",{name:"Accumulation/Distribution",params:{volumeSeriesID:"volume"}},{getValues:function(e,f){var g=f.period,n=e.xData,d=e.yData,b=f.volumeSeriesID,a=e.chart.get(b);e=a&&a.yData;f=d?d.length:0;var h=[],p=[],q=[];if(n.length<=g&&f&&4!==d[0].length)return!1;if(!a)return c.error("Series "+b+" not found! Check `volumeSeriesID`.",!0);for(b=g;b<f;b++){var g=h.length,
-a=d[b][1],k=d[b][2],m=d[b][3],l=e[b],a=[n[b],m===a&&m===k||a===k?0:(2*m-k-a)/(a-k)*l];0<g&&(a[1]+=h[g-1][1],a[1]=a[1]);h.push(a);p.push(a[0]);q.push(a[1])}return{values:h,xData:p,yData:q}}})})(c)});
+(function(a){"object"===typeof module&&module.exports?(a["default"]=a,module.exports=a):"function"===typeof define&&define.amd?define("highcharts/indicators/accumulation-distribution",["highcharts","highcharts/modules/stock"],function(d){a(d);a.Highcharts=d;return a}):a("undefined"!==typeof Highcharts?Highcharts:void 0)})(function(a){function d(a,b,d,k){a.hasOwnProperty(b)||(a[b]=k.apply(null,d),"function"===typeof CustomEvent&&window.dispatchEvent(new CustomEvent("HighchartsModuleLoaded",{detail:{path:b,
+module:a[b]}})))}a=a?a._modules:{};d(a,"Stock/Indicators/AD/ADIndicator.js",[a["Core/Series/SeriesRegistry.js"],a["Core/Utilities.js"]],function(a,b){var d=this&&this.__extends||function(){var a=function(b,c){a=Object.setPrototypeOf||{__proto__:[]}instanceof Array&&function(a,c){a.__proto__=c}||function(a,c){for(var e in c)c.hasOwnProperty(e)&&(a[e]=c[e])};return a(b,c)};return function(b,c){function e(){this.constructor=b}a(b,c);b.prototype=null===c?Object.create(c):(e.prototype=c.prototype,new e)}}(),
+k=a.seriesTypes.sma,p=b.error,q=b.extend,r=b.merge;b=function(a){function b(){var c=null!==a&&a.apply(this,arguments)||this;c.data=void 0;c.options=void 0;c.points=void 0;return c}d(b,a);b.populateAverage=function(a,b,d,h,f){f=b[h][1];var c=b[h][2];b=b[h][3];d=d[h];return[a[h],b===f&&b===c||f===c?0:(2*b-c-f)/(f-c)*d]};b.prototype.getValues=function(a,d){var c=d.period,h=a.xData,f=a.yData,e=d.volumeSeriesID,g=a.chart.get(e);d=g&&g.yData;var k=f?f.length:0,l=[],m=[],n=[];if(!(h.length<=c&&k&&4!==f[0].length)){if(g){for(e=
+c;e<k;e++)a=l.length,g=b.populateAverage(h,f,d,e,c),0<a&&(g[1]+=l[a-1][1]),l.push(g),m.push(g[0]),n.push(g[1]);return{values:l,xData:m,yData:n}}p("Series "+e+" not found! Check `volumeSeriesID`.",!0,a.chart)}};b.defaultOptions=r(k.defaultOptions,{params:{index:void 0,volumeSeriesID:"volume"}});return b}(k);q(b.prototype,{nameComponents:!1,nameBase:"Accumulation/Distribution"});a.registerSeriesType("ad",b);"";return b});d(a,"masters/indicators/accumulation-distribution.src.js",[],function(){})});
+//# sourceMappingURL=accumulation-distribution.js.map

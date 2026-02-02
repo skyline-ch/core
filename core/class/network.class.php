@@ -1,23 +1,23 @@
 <?php
 
 /* This file is part of Jeedom.
- *
- * Jeedom is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * Jeedom is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with Jeedom. If not, see <http://www.gnu.org/licenses/>.
- */
+*
+* Jeedom is free software: you can redistribute it and/or modify
+* it under the terms of the GNU General Public License as published by
+* the Free Software Foundation, either version 3 of the License, or
+* (at your option) any later version.
+*
+* Jeedom is distributed in the hope that it will be useful,
+* but WITHOUT ANY WARRANTY; without even the implied warranty of
+* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+* GNU General Public License for more details.
+*
+* You should have received a copy of the GNU General Public License
+* along with Jeedom. If not, see <http://www.gnu.org/licenses/>.
+*/
 
 /* * ***************************Includes********************************* */
-require_once dirname(__FILE__) . '/../../core/php/core.inc.php';
+require_once __DIR__ . '/../../core/php/core.inc.php';
 
 class network {
 
@@ -26,6 +26,14 @@ class network {
 		$jeedom_ip = self::getNetworkAccess('internal', 'ip', '', false);
 		if (!filter_var($jeedom_ip, FILTER_VALIDATE_IP)) {
 			return 'external';
+		}
+		if (config::byKey('network::localip') != '') {
+			$localIps = explode(';', config::byKey('network::localip'));
+			foreach ($localIps as $localIp) {
+				if (netMatch($localIp, $client_ip)) {
+					return 'internal';
+				}
+			}
 		}
 		$jeedom_ips = explode('.', $jeedom_ip);
 		if (count($jeedom_ips) != 4) {
@@ -48,9 +56,15 @@ class network {
 		return '';
 	}
 
-	public static function getNetworkAccess($_mode = 'auto', $_protocole = '', $_default = '', $_test = true) {
+	public static function getNetworkAccess($_mode = 'auto', $_protocol = '', $_default = '', $_test = false) {
 		if ($_mode == 'auto') {
 			$_mode = self::getUserLocation();
+		}
+		if ($_mode == 'internal' && config::byKey('internalAddr', 'core', '') == '') {
+			self::checkConf($_mode);
+		}
+		if ($_mode == 'external' && config::byKey('market::allowDNS') != 1 && config::byKey('externalAddr', 'core', '') == '') {
+			self::checkConf($_mode);
 		}
 		if ($_test && !self::test($_mode)) {
 			self::checkConf($_mode);
@@ -59,39 +73,50 @@ class network {
 			if (strpos(config::byKey('internalAddr', 'core', $_default), 'http://') !== false || strpos(config::byKey('internalAddr', 'core', $_default), 'https://') !== false) {
 				config::save('internalAddr', str_replace(array('http://', 'https://'), '', config::byKey('internalAddr', 'core', $_default)));
 			}
-			if ($_protocole == 'ip' || $_protocole == 'dns') {
+			if ($_protocol == 'ip' || $_protocol == 'dns') {
 				return config::byKey('internalAddr', 'core', $_default);
 			}
-			if ($_protocole == 'ip:port' || $_protocole == 'dns:port') {
-				return config::byKey('internalAddr') . ':' . config::byKey('internalPort', 'core', 80);
+			if ($_protocol == 'ip:port' || $_protocol == 'dns:port') {
+				return config::byKey('internalAddr') . ':' . self::getPort($_mode);
 			}
-			if ($_protocole == 'proto:ip' || $_protocole == 'proto:dns') {
+			if ($_protocol == 'proto:ip' || $_protocol == 'proto:dns') {
 				return config::byKey('internalProtocol') . config::byKey('internalAddr');
 			}
-			if ($_protocole == 'proto:ip:port' || $_protocole == 'proto:dns:port') {
-				return config::byKey('internalProtocol') . config::byKey('internalAddr') . ':' . config::byKey('internalPort', 'core', 80);
+			if ($_protocol == 'proto:ip:port' || $_protocol == 'proto:dns:port') {
+				return config::byKey('internalProtocol') . config::byKey('internalAddr') . ':' . self::getPort($_mode);
 			}
-			if ($_protocole == 'proto:127.0.0.1:port:comp') {
-				return trim(config::byKey('internalProtocol') . '127.0.0.1:' . config::byKey('internalPort', 'core', 80) . '/' . trim(config::byKey('internalComplement'), '/'), '/');
+			if ($_protocol == 'proto:127.0.0.1:port:comp') {
+				if (jeedom::getHardwareName() == 'docker') {
+					return trim(config::byKey('internalProtocol') . config::byKey('internalAddr') . ':' . self::getPort($_mode) . '/' . trim(config::byKey('internalComplement'), '/'), '/');
+				}
+				return trim(config::byKey('internalProtocol') . '127.0.0.1:' . self::getPort($_mode) . '/' . trim(config::byKey('internalComplement'), '/'), '/');
 			}
-			if ($_protocole == 'http:127.0.0.1:port:comp') {
-				return trim('http://127.0.0.1:' . config::byKey('internalPort', 'core', 80) . '/' . trim(config::byKey('internalComplement'), '/'), '/');
+			if ($_protocol == 'http:127.0.0.1:port:comp') {
+				if (jeedom::getHardwareName() == 'docker') {
+					return trim('http://' . config::byKey('internalAddr') . ':' . self::getPort($_mode, 'http') . '/' . trim(config::byKey('internalComplement'), '/'), '/');
+				}
+				return trim('http://127.0.0.1:' . self::getPort($_mode, 'http') . '/' . trim(config::byKey('internalComplement'), '/'), '/');
 			}
-			return trim(config::byKey('internalProtocol') . config::byKey('internalAddr') . ':' . config::byKey('internalPort', 'core', 80) . '/' . trim(config::byKey('internalComplement'), '/'), '/');
-
+			if (config::byKey('internalProtocol') == 'http://' && self::getPort($_mode) == 80) {
+				return trim(config::byKey('internalProtocol') . config::byKey('internalAddr') . '/' . trim(config::byKey('internalComplement'), '/'), '/');
+			}
+			if (config::byKey('internalProtocol') == 'https://' && self::getPort($_mode) == 443) {
+				return trim(config::byKey('internalProtocol') . config::byKey('internalAddr') . '/' . trim(config::byKey('internalComplement'), '/'), '/');
+			}
+			return trim(config::byKey('internalProtocol') . config::byKey('internalAddr') . ':' . self::getPort($_mode) . '/' . trim(config::byKey('internalComplement'), '/'), '/');
 		}
 		if ($_mode == 'dnsjeedom') {
 			return config::byKey('jeedom::url');
 		}
 		if ($_mode == 'external') {
-			if ($_protocole == 'ip') {
-				if (config::byKey('market::allowDNS') == 1 && config::byKey('jeedom::url') != '') {
+			if ($_protocol == 'ip') {
+				if (config::byKey('market::allowDNS') == 1 && config::byKey('jeedom::url') != '' && config::byKey('network::disableMangement') == 0) {
 					return getIpFromString(config::byKey('jeedom::url'));
 				}
 				return getIpFromString(config::byKey('externalAddr'));
 			}
-			if ($_protocole == 'ip:port') {
-				if (config::byKey('market::allowDNS') == 1 && config::byKey('jeedom::url') != '') {
+			if ($_protocol == 'ip:port') {
+				if (config::byKey('market::allowDNS') == 1 && config::byKey('jeedom::url') != '' && config::byKey('network::disableMangement') == 0) {
 					$url = parse_url(config::byKey('jeedom::url'));
 					if (isset($url['host'])) {
 						if (isset($url['port'])) {
@@ -101,10 +126,10 @@ class network {
 						}
 					}
 				}
-				return config::byKey('externalAddr') . ':' . config::byKey('externalPort', 'core', 80);
+				return config::byKey('externalAddr') . ':' . self::getPort($_mode);
 			}
-			if ($_protocole == 'proto:dns:port' || $_protocole == 'proto:ip:port') {
-				if (config::byKey('market::allowDNS') == 1 && config::byKey('jeedom::url') != '') {
+			if ($_protocol == 'proto:dns:port' || $_protocol == 'proto:ip:port') {
+				if (config::byKey('market::allowDNS') == 1 && config::byKey('jeedom::url') != '' && config::byKey('network::disableMangement') == 0) {
 					$url = parse_url(config::byKey('jeedom::url'));
 					$return = '';
 					if (isset($url['scheme'])) {
@@ -118,10 +143,10 @@ class network {
 						}
 					}
 				}
-				return config::byKey('externalProtocol') . config::byKey('externalAddr') . ':' . config::byKey('externalPort', 'core', 80);
+				return config::byKey('externalProtocol') . config::byKey('externalAddr') . ':' . self::getPort($_mode);
 			}
-			if ($_protocole == 'proto:dns' || $_protocole == 'proto:ip') {
-				if (config::byKey('market::allowDNS') == 1 && config::byKey('jeedom::url') != '') {
+			if ($_protocol == 'proto:dns' || $_protocol == 'proto:ip') {
+				if (config::byKey('market::allowDNS') == 1 && config::byKey('jeedom::url') != '' && config::byKey('network::disableMangement') == 0) {
 					$url = parse_url(config::byKey('jeedom::url'));
 					$return = '';
 					if (isset($url['scheme'])) {
@@ -137,8 +162,8 @@ class network {
 				}
 				return config::byKey('externalProtocol') . config::byKey('externalAddr');
 			}
-			if ($_protocole == 'dns:port') {
-				if (config::byKey('market::allowDNS') == 1 && config::byKey('jeedom::url') != '') {
+			if ($_protocol == 'dns:port') {
+				if (config::byKey('market::allowDNS') == 1 && config::byKey('jeedom::url') != '' && config::byKey('network::disableMangement') == 0) {
 					$url = parse_url(config::byKey('jeedom::url'));
 					if (isset($url['host'])) {
 						if (isset($url['port'])) {
@@ -148,10 +173,10 @@ class network {
 						}
 					}
 				}
-				return config::byKey('externalAddr') . ':' . config::byKey('externalPort', 'core', 80);
+				return config::byKey('externalAddr') . ':' . self::getPort($_mode);
 			}
-			if ($_protocole == 'proto') {
-				if (config::byKey('market::allowDNS') == 1 && config::byKey('jeedom::url') != '') {
+			if ($_protocol == 'proto') {
+				if (config::byKey('market::allowDNS') == 1 && config::byKey('jeedom::url') != '' && config::byKey('network::disableMangement') == 0) {
 					$url = parse_url(config::byKey('jeedom::url'));
 					if (isset($url['scheme'])) {
 						return $url['scheme'] . '://';
@@ -159,11 +184,37 @@ class network {
 				}
 				return config::byKey('externalProtocol');
 			}
-			if (config::byKey('market::allowDNS') == 1 && config::byKey('jeedom::url') != '') {
+
+			if (config::byKey('dns::token') != '' && config::byKey('market::allowDNS') == 1 && config::byKey('jeedom::url') != '' && config::byKey('network::disableMangement') == 0) {
 				return trim(config::byKey('jeedom::url') . '/' . trim(config::byKey('externalComplement', 'core', ''), '/'), '/');
 			}
-			return trim(config::byKey('externalProtocol') . config::byKey('externalAddr') . ':' . config::byKey('externalPort', 'core', 80) . '/' . trim(config::byKey('externalComplement'), '/'), '/');
+			if (config::byKey('externalProtocol') == 'http://' && self::getPort($_mode, 'http') == 80) {
+				return trim(config::byKey('externalProtocol') . config::byKey('externalAddr') . '/' . trim(config::byKey('externalComplement'), '/'), '/');
+			}
+			if (config::byKey('externalProtocol') == 'https://' && self::getPort($_mode, 'https') == 443) {
+				return trim(config::byKey('externalProtocol') . config::byKey('externalAddr') . '/' . trim(config::byKey('externalComplement'), '/'), '/');
+			}
+			return trim(config::byKey('externalProtocol') . config::byKey('externalAddr') . ':' . self::getPort($_mode) . '/' . trim(config::byKey('externalComplement'), '/'), '/');
 		}
+	}
+
+	private static function getPort(string $_mode = 'internal', string $_protocol = '') {
+		if ($_mode != 'internal' && $_mode != 'external') {
+			throw new InvalidArgumentException("Mode must be 'internal' or 'external'. Invalid mode received: {$_mode}");
+		}
+		if ($_protocol == '') {
+			$_protocol = strtolower(trim(config::byKey("{$_mode}Protocol", 'core'), ':/ '));
+		}
+		if ($_protocol != 'http' && $_protocol != 'https') {
+			throw new RuntimeException("Protocol must be 'http' or 'https'. Invalid protocol: {$_protocol}");
+		}
+
+		if ($_protocol == 'http') {
+			$default_port = 80;
+		} else {
+			$default_port = 443;
+		}
+		return config::byKey("{$_mode}Port", 'core', $default_port);
 	}
 
 	public static function checkConf($_mode = 'external') {
@@ -171,33 +222,46 @@ class network {
 			config::save($_mode . 'Protocol', 'http://');
 		}
 		if (config::byKey($_mode . 'Port') == '') {
-			config::save($_mode . 'Port', 80);
+			config::save($_mode . 'Port', self::getPort($_mode));
 		}
-		if (config::byKey($_mode . 'Protocol') == 'https://' && config::byKey($_mode . 'Port') == 80) {
+		if (config::byKey($_mode . 'Protocol') == 'https://' && self::getPort($_mode) == 80) {
 			config::save($_mode . 'Port', 443);
 		}
-		if (config::byKey($_mode . 'Protocol') == 'http://' && config::byKey($_mode . 'Port') == 443) {
+		if (config::byKey($_mode . 'Protocol') == 'http://' && self::getPort($_mode) == 443) {
 			config::save($_mode . 'Port', 80);
 		}
 		if (trim(config::byKey($_mode . 'Complement')) == '/') {
 			config::save($_mode . 'Complement', '');
 		}
 		if ($_mode == 'internal') {
-			foreach (self::getInterfaces() as $interface) {
-				if ($interface == 'lo') {
-					continue;
-				}
-				$ip = self::getInterfaceIp($interface);
-				if (!netMatch('127.0.*.*', $ip) && $ip != '' && filter_var($ip, FILTER_VALIDATE_IP)) {
-					config::save('internalAddr', $ip);
-					break;
+			if (config::byKey('network::disableInternalAuto', 'core', 0) == 0) {
+				foreach ((self::getInterfacesInfo()) as $interface) {
+					if ($interface['ifname'] == 'lo' || !isset($interface['addr_info']) || strpos($interface['ifname'], 'docker') !== false  || strpos($interface['ifname'], 'tun') !== false || strpos($interface['ifname'], 'br') !== false) {
+						continue;
+					}
+					if (config::byKey('network::internalAutoInterface', 'core', 'auto') != 'auto' && $interface['ifname'] != config::byKey('network::internalAutoInterface', 'core', 'auto')) {
+						continue;
+					}
+					$ip = null;
+					foreach ($interface['addr_info'] as $addr_info) {
+						if (isset($addr_info['family']) && $addr_info['family'] == 'inet') {
+							$ip = $addr_info['local'];
+						}
+					}
+					if ($ip == null) {
+						continue;
+					}
+					if (!netMatch('127.0.*.*', $ip) && !netMatch('169.*.*.*', $ip) && $ip != '' && filter_var($ip, FILTER_VALIDATE_IP)) {
+						config::save('internalAddr', $ip);
+						break;
+					}
 				}
 			}
 		}
 	}
 
-	public static function test($_mode = 'external', $_timeout = 10) {
-		if (config::byKey('network::disableMangement') == 1) {
+	public static function test($_mode = 'external', $_timeout = 15) {
+		if (config::byKey('network::disableMangement') == 1 && $_mode == 'external') {
 			return true;
 		}
 		if ($_mode == 'internal' && netMatch('127.0.*.*', self::getNetworkAccess($_mode, 'ip', '', false))) {
@@ -216,11 +280,15 @@ class network {
 		}
 		$data = curl_exec($ch);
 		if (curl_errno($ch)) {
-			log::add('network', 'debug', 'Erreur sur ' . $url . ' => ' . curl_errno($ch));
-			curl_close($ch);
-			return false;
+			usleep(rand(1000, 10000));
+			$data = curl_exec($ch);
+			if (curl_errno($ch)) {
+				log::add('network', 'debug', 'Erreur sur ' . $url . ' => ' . curl_error($ch));
+				curl_close($ch);
+				return false;
+			}
 		}
-		curl_close($ch);
+		unset($ch);
 		if (trim($data) != 'ok') {
 			log::add('network', 'debug', 'Retour NOK sur ' . $url . ' => ' . $data);
 			return false;
@@ -228,13 +296,10 @@ class network {
 		return true;
 	}
 
-/*     * *********************DNS************************* */
+	/*     * *********************DNS************************* */
 
 	public static function dns_create() {
 		if (config::byKey('dns::token') == '') {
-			return;
-		}
-		if (config::byKey('market::allowDNS') != 1) {
 			return;
 		}
 		try {
@@ -274,7 +339,9 @@ class network {
 			throw new Exception(__('Le plugin OpenVPN doit être actif', __FILE__));
 		}
 		$openvpn = eqLogic::byLogicalId('dnsjeedom', 'openvpn');
+		$direct = true;
 		if (!is_object($openvpn)) {
+			$direct = false;
 			$openvpn = new openvpn();
 			$openvpn->setName('DNS Jeedom');
 		}
@@ -283,26 +350,37 @@ class network {
 		$openvpn->setEqType_name('openvpn');
 		$openvpn->setConfiguration('dev', 'tun');
 		$openvpn->setConfiguration('proto', 'udp');
-		$openvpn->setConfiguration('remote_host', 'vpn.dns' . config::byKey('dns::number', 'core', 1) . '.jeedom.com');
+		if (config::byKey('dns::preferProtocol') != '' && strpos(config::byKey('dns::protocol'), config::byKey('dns::preferProtocol')) !== false) {
+			$openvpn->setConfiguration('proto', config::byKey('dns::preferProtocol'));
+		}
+		if (config::byKey('dns::vpnurl') != '') {
+			$openvpn->setConfiguration('remote_host', config::byKey('dns::vpnurl'));
+		} else {
+			$openvpn->setConfiguration('remote_host', 'vpn.dns' . config::byKey('dns::number', 'core', 1) . '.jeedom.com');
+		}
+		if (config::byKey('dns::remote') != '') {
+			$openvpn->setConfiguration('remote', config::byKey('dns::remote'));
+		}
 		$openvpn->setConfiguration('username', jeedom::getHardwareKey());
 		$openvpn->setConfiguration('password', config::byKey('dns::token'));
 		$openvpn->setConfiguration('compression', 'comp-lzo');
 		$openvpn->setConfiguration('remote_port', config::byKey('vpn::port', 'core', 1194));
 		$openvpn->setConfiguration('auth_mode', 'password');
-		$openvpn->save();
-		if (!file_exists(dirname(__FILE__) . '/../../plugins/openvpn/data')) {
-			shell_exec('mkdir -p ' . dirname(__FILE__) . '/../../plugins/openvpn/data');
+		$openvpn->save($direct);
+		if (!file_exists(__DIR__ . '/../../plugins/openvpn/data')) {
+			shell_exec('mkdir -p ' . __DIR__ . '/../../plugins/openvpn/data');
 		}
-		$path_ca = dirname(__FILE__) . '/../../plugins/openvpn/data/ca_' . $openvpn->getConfiguration('key') . '.crt';
+		$path_ca = __DIR__ . '/../../plugins/openvpn/data/ca_' . $openvpn->getConfiguration('key') . '.crt';
 		if (file_exists($path_ca)) {
 			unlink($path_ca);
 		}
-		copy(dirname(__FILE__) . '/../../script/ca_dns.crt', $path_ca);
+		copy(__DIR__ . '/../../resources/ca_dns.crt', $path_ca);
 		if (!file_exists($path_ca)) {
-			throw new Exception(__('Impossible de créer le fichier  : ', __FILE__) . $path_ca);
+			throw new Exception(__('Impossible de créer le fichier  :', __FILE__) . ' ' . $path_ca);
 		}
 		return $openvpn;
 	}
+
 
 	public static function dns_start() {
 		if (config::byKey('dns::token') == '') {
@@ -311,17 +389,12 @@ class network {
 		if (config::byKey('market::allowDNS') != 1) {
 			return;
 		}
-		$openvpn = self::dns_create();
-		$cmd = $openvpn->getCmd('action', 'start');
+		$vpn = self::dns_create();
+		$cmd = $vpn->getCmd('action', 'start');
 		if (!is_object($cmd)) {
 			throw new Exception(__('La commande de démarrage du DNS est introuvable', __FILE__));
 		}
 		$cmd->execCmd();
-		$interface = $openvpn->getInterfaceName();
-		if ($interface !== null && $interface != '' && $interface !== false) {
-			shell_exec(system::getCmdSudo() . 'iptables -A INPUT -i ' . $interface . ' -p tcp  --destination-port 80 -j ACCEPT');
-			shell_exec(system::getCmdSudo() . 'iptables -A INPUT -i ' . $interface . ' -j DROP');
-		}
 	}
 
 	public static function dns_run() {
@@ -332,11 +405,11 @@ class network {
 			return false;
 		}
 		try {
-			$openvpn = self::dns_create();
+			$vpn = self::dns_create();
 		} catch (Exception $e) {
 			return false;
 		}
-		$cmd = $openvpn->getCmd('info', 'state');
+		$cmd = $vpn->getCmd('info', 'state');
 		if (!is_object($cmd)) {
 			throw new Exception(__('La commande de statut du DNS est introuvable', __FILE__));
 		}
@@ -347,53 +420,43 @@ class network {
 		if (config::byKey('dns::token') == '') {
 			return;
 		}
-		$openvpn = self::dns_create();
-		$cmd = $openvpn->getCmd('action', 'stop');
+		$vpn = self::dns_create();
+		$cmd = $vpn->getCmd('action', 'stop');
 		if (!is_object($cmd)) {
 			throw new Exception(__('La commande d\'arrêt du DNS est introuvable', __FILE__));
 		}
 		$cmd->execCmd();
 	}
 
-/*     * *********************Network management************************* */
+	/*     * *********************Network management************************* */
 
-	public static function getInterfaceIp($_interface) {
-		$ip = trim(shell_exec(system::getCmdSudo() . "ip addr show " . $_interface . " | grep \"inet .*" . $_interface . "\" | awk '{print $2}' | cut -d '/' -f 1"));
-		if (filter_var($ip, FILTER_VALIDATE_IP)) {
-			return $ip;
+	public static function portOpen($host, $port) {
+		$fp = @fsockopen($host, $port, $errno, $errstr, 0.1);
+		if (!is_resource($fp)) {
+			return false;
 		}
-		return false;
+		fclose($fp);
+		return true;
 	}
 
-	public static function getInterfaceMac($_interface) {
-		$valid_mac = "([0-9A-F]{2}[:-]){5}([0-9A-F]{2})";
-		$mac = trim(shell_exec(system::getCmdSudo() . "ip addr show " . $_interface . " 2>&1 | grep ether | awk '{print $2}'"));
-		if (preg_match("/" . $valid_mac . "/i", $mac)) {
-			return $mac;
-		}
-		return false;
+	public static function getInterfacesInfo() {
+		return json_decode(shell_exec(system::getCmdSudo() . "ip -j a"), true);
 	}
 
-	public static function getInterfaces() {
-		$result = explode("\n", shell_exec(system::getCmdSudo() . "ip -o link show | awk -F': ' '{print $2}'"));
-		foreach ($result as $value) {
-			if (trim($value) == '') {
-				continue;
+	public static function cron10() {
+		if (config::byKey('dns::token') != '' && config::byKey('market::allowDNS') == 1) {
+			sleep(rand(0, 240));
+			if (!network::test('external')) {
+				sleep(rand(20, 60));
+				if (!network::test('external')) {
+					log::add('network', 'warning', __('Accès externe non ok, redémarrage du dns Jeedom', __FILE__));
+					self::dns_stop();
+					self::dns_start();
+				}
 			}
-			$return[] = $value;
 		}
-		return $return;
-	}
-
-	public static function cron5() {
 		if (config::byKey('network::disableMangement') == 1) {
 			return;
-		}
-		if (!network::test('internal')) {
-			network::checkConf('internal');
-		}
-		if (!network::test('external')) {
-			network::checkConf('external');
 		}
 		if (!jeedom::isCapable('sudo') || jeedom::getHardwareName() == 'docker') {
 			return;
@@ -404,7 +467,7 @@ class network {
 		}
 		$gw = shell_exec("ip route show default | awk '/default/ {print $3}'");
 		if ($gw == '') {
-			log::add('network', 'error', __('Souci réseau détecté, redémarrage du réseau', __FILE__));
+			log::add('network', 'error', __('Souci réseau détecté, redémarrage du réseau. Aucune gateway de trouvée', __FILE__));
 			exec(system::getCmdSudo() . 'service networking restart');
 			return;
 		}
@@ -412,7 +475,11 @@ class network {
 		if ($return_val == 0) {
 			return;
 		}
-		log::add('network', 'error', __('Souci réseau détecté, redémarrage du réseau', __FILE__));
+		exec(system::getCmdSudo() . 'ping -n -c 1 -t 255 ' . $gw . ' 2>&1 > /dev/null', $output, $return_val);
+		if ($return_val == 0) {
+			return;
+		}
+		log::add('network', 'error', __('Souci réseau détecté, redémarrage du réseau. La gateway ne répond pas au ping :', __FILE__) . ' ' . $gw);
 		exec(system::getCmdSudo() . 'service networking restart');
 	}
 }

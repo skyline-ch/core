@@ -2,37 +2,79 @@
 if (!isConnect('admin')) {
 	throw new Exception('{{401 - Accès non autorisé}}');
 }
-$rootPath = dirname(__FILE__) . '/../../';
-sendVarToJS('rootPath', $rootPath);
-?>
+$loadJquery = true;
+if (config::byKey('core::jqueryless') == 1) $loadJquery = false;
+global $JEEDOM_INTERNAL_CONFIG;
 
-<div class="row row-overflow">
-	<div class="col-lg-2">
-		<legend><i class="fa fa-folder"></i> {{Dossiers}}</legend>
-		<div id="div_treeFolder">
-			<ul id="ul_Folder">
-				<?php
-foreach (ls($rootPath, '*', false, array('folders')) as $folder) {
-	echo '<li data-jstree=\'{"opened":true}\'><a data-path="' . dirname(__FILE__) . '/../../' . $folder . '">' . $folder . '</a></li>';
+if (init('type', '') == 'custom') {
+	$rootPaths = ['desktop/custom', 'mobile/custom'];
+	foreach ($rootPaths as $rootPath) {
+		$path = __DIR__ . '/../../' . $rootPath;
+		if (!file_exists($path)) {
+			mkdir($path);
+		}
+		$filePath = $path . '/custom.css';
+		if (!is_file($filePath)) {
+			@file_put_contents($filePath, '/* Custom CSS Core ' . jeedom::version() . ' */');
+		}
+		$filePath = $path . '/custom.js';
+		if (!is_file($filePath)) {
+			@file_put_contents($filePath, '/* Custom js Core ' . jeedom::version() . ' */');
+		}
+	}
 }
+
+sendVarToJS([
+	'jeephp2js.editorType' => init('type', ''),
+	'jeephp2js.customActive' => config::byKey('enableCustomCss'),
+	'root' => init('root', ''),
+]);
+
+if (!$loadJquery) include_file('3rdparty', 'jquery/jquery.min', 'js');
+if (!$loadJquery) include_file('3rdparty', 'jquery.utils/jquery.utils', 'js');
+
+//include_file('3rdparty', 'jquery/jquery.min', 'js');
+include_file('3rdparty', 'jquery.ui/jquery-ui.min', 'js');
+
+
+//Core CodeMirror:
+include_file('3rdparty', 'codemirror/lib/codemirror', 'js');
+include_file('3rdparty', 'codemirror/lib/codemirror', 'css');
+include_file('3rdparty', 'codemirror/addon/mode/loadmode', 'js');
+include_file('3rdparty', 'codemirror/mode/meta', 'js');
+//Core CodeMirror addons:
+include_file('3rdparty', 'codemirror/addon/edit/matchbrackets', 'js');
+include_file('3rdparty', 'codemirror/addon/selection/active-line', 'js');
+include_file('3rdparty', 'codemirror/addon/search/search', 'js');
+include_file('3rdparty', 'codemirror/addon/search/searchcursor', 'js');
+include_file('3rdparty', 'codemirror/addon/dialog/dialog', 'js');
+include_file('3rdparty', 'codemirror/addon/dialog/dialog', 'css');
+include_file('3rdparty', 'codemirror/addon/fold/brace-fold', 'js');
+include_file('3rdparty', 'codemirror/addon/fold/comment-fold', 'js');
+include_file('3rdparty', 'codemirror/addon/fold/foldcode', 'js');
+include_file('3rdparty', 'codemirror/addon/fold/indent-fold', 'js');
+include_file('3rdparty', 'codemirror/addon/fold/markdown-fold', 'js');
+include_file('3rdparty', 'codemirror/addon/fold/xml-fold', 'js');
+include_file('3rdparty', 'codemirror/addon/fold/foldgutter', 'js');
+include_file('3rdparty', 'codemirror/addon/fold/foldgutter', 'css');
+include_file('3rdparty', 'codemirror/theme/monokai', 'css');
+
+//elFinder:
+include_file('3rdparty', 'elfinder/css/elfinder.min', 'css');
+include_file('3rdparty', 'elfinder/themes/css/theme-gray', 'css');
+include_file('desktop', 'editor', 'css');
+include_file('3rdparty', 'elfinder/js/elfinder.full', 'js');
+
+$lang = substr(config::byKey('language', 'core', 'en'), 0, 2);
+if ($lang != 'en') {
+	$plufinSrc = '3rdparty/elfinder/js/i18n/elfinder.' . $lang . '.js';
+	echo '<script src="' . $plufinSrc . '"></script>';
+}
+
 ?>
-			</ul>
-		</div>
 
-	</div>
+<div id="elfinder" class=""></div>
 
-	<div class="col-lg-2">
-		<legend><i class="fa fa-file"></i> {{Fichiers}}</legend>
-		<div id="div_fileList"></div>
-	</div>
-
-	<div class="col-lg-8">
-		<legend><i class="fa fa-pencil"></i> {{Edition}}
-			<a class="btn btn-success btn-xs pull-right" id="bt_saveFile" style="position: relative;top:4px;"><i class="fa fa-check"></i> {{Sauvegarder}}</a>
-			<a class="btn btn-danger btn-xs pull-right" id="bt_deleteFile" style="position: relative;top:4px;"><i class="fa fa-times"></i> {{Supprimer}}</a>
-			<a class="btn btn-default btn-xs pull-right" id="bt_createFile" style="position: relative;top:4px;"><i class="fa fa-file"></i> {{Nouveau}}</a>
-		</legend>
-		<textarea class="form-control ta_autosize" id="ta_fileContent"></textarea>
-	</div>
-</div>
-<?php include_file("desktop", "editor", "js");?>
+<?php
+include_file("desktop", "editor", "js");
+?>

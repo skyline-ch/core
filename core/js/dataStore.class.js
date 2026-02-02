@@ -1,4 +1,3 @@
-
 /* This file is part of Jeedom.
  *
  * Jeedom is free software: you can redistribute it and/or modify
@@ -15,12 +14,9 @@
  * along with Jeedom. If not, see <http://www.gnu.org/licenses/>.
  */
 
+jeedom.dataStore = function() {};
 
- jeedom.dataStore = function () {
- };
-
-
- jeedom.dataStore.save = function (_params) {
+jeedom.dataStore.save = function(_params) {
     var paramsRequired = ['id', 'value', 'type', 'key', 'link_id'];
     var paramsSpecifics = {};
     try {
@@ -29,9 +25,9 @@
         (_params.error || paramsSpecifics.error || jeedom.private.default_params.error)(e);
         return;
     }
-    var params = $.extend({}, jeedom.private.default_params, paramsSpecifics, _params || {});
+    var params = domUtils.extend({}, jeedom.private.default_params, paramsSpecifics, _params || {});
     var paramsAJAX = jeedom.private.getParamsAJAX(params);
-    paramsAJAX.async =  _params.async || true;
+    paramsAJAX.async = _params.async || true;
 
     paramsAJAX.url = 'core/ajax/dataStore.ajax.php';
     paramsAJAX.data = {
@@ -42,11 +38,11 @@
         key: _params.key,
         link_id: _params.link_id,
     };
-    $.ajax(paramsAJAX);
+    domUtils.ajax(paramsAJAX);
 }
 
-jeedom.dataStore.all = function (_params) {
-    var paramsRequired = ['type','usedBy'];
+jeedom.dataStore.byTypeLinkIdKey = function(_params) {
+    var paramsRequired = ['type', 'linkId', 'key', 'usedBy'];
     var paramsSpecifics = {};
     try {
         jeedom.private.checkParamsRequired(_params || {}, paramsRequired);
@@ -54,7 +50,29 @@ jeedom.dataStore.all = function (_params) {
         (_params.error || paramsSpecifics.error || jeedom.private.default_params.error)(e);
         return;
     }
-    var params = $.extend({}, jeedom.private.default_params, paramsSpecifics, _params || {});
+    var params = domUtils.extend({}, jeedom.private.default_params, paramsSpecifics, _params || {});
+    var paramsAJAX = jeedom.private.getParamsAJAX(params);
+    paramsAJAX.url = 'core/ajax/dataStore.ajax.php';
+    paramsAJAX.data = {
+        action: 'byTypeLinkIdKey',
+        type: _params.type,
+        linkId: _params.linkId,
+        key: _params.key,
+        usedBy: _params.usedBy
+    };
+    domUtils.ajax(paramsAJAX);
+}
+
+jeedom.dataStore.all = function(_params) {
+    var paramsRequired = ['type', 'usedBy'];
+    var paramsSpecifics = {};
+    try {
+        jeedom.private.checkParamsRequired(_params || {}, paramsRequired);
+    } catch (e) {
+        (_params.error || paramsSpecifics.error || jeedom.private.default_params.error)(e);
+        return;
+    }
+    var params = domUtils.extend({}, jeedom.private.default_params, paramsSpecifics, _params || {});
     var paramsAJAX = jeedom.private.getParamsAJAX(params);
     paramsAJAX.url = 'core/ajax/dataStore.ajax.php';
     paramsAJAX.data = {
@@ -62,45 +80,51 @@ jeedom.dataStore.all = function (_params) {
         type: _params.type,
         usedBy: _params.usedBy
     };
-    $.ajax(paramsAJAX);
+    domUtils.ajax(paramsAJAX);
 }
 
-jeedom.dataStore.getSelectModal = function (_options, callback) {
+jeedom.dataStore.getSelectModal = function(_options, callback) {
     if (!isset(_options)) {
         _options = {};
     }
-    if ($("#mod_insertDataStoreValue").length != 0) {
-        $("#mod_insertDataStoreValue").remove();
-    }
-    $('body').append('<div id="mod_insertDataStoreValue" title="{{Sélectionner une variable}}" ></div>');
-    $("#mod_insertDataStoreValue").dialog({
-        closeText: '',
-        autoOpen: false,
-        modal: true,
+    document.getElementById('mod_insertDataStoreValue')?.remove()
+    document.body.insertAdjacentHTML('beforeend', '<div id="mod_insertDataStoreValue"></div>')
+    jeeDialog.dialog({
+        id: 'mod_insertDataStoreValue',
+        title: '{{Sélectionner une variable}}',
         height: 250,
-        width: 800
-    });
-    jQuery.ajaxSetup({async: false});
-    $('#mod_insertDataStoreValue').load('index.php?v=d&modal=dataStore.human.insert');
-    jQuery.ajaxSetup({async: true});
-    mod_insertDataStore.setOptions(_options);
-    $("#mod_insertDataStoreValue").dialog('option', 'buttons', {
-        "Annuler": function () {
-            $(this).dialog("close");
-        },
-        "Valider": function () {
-            var retour = {};
-            retour.human = mod_insertDataStore.getValue();
-            retour.id = mod_insertDataStore.getId();
-            if ($.trim(retour) != '') {
-                callback(retour);
+        width: 800,
+        top: '20vh',
+        contentUrl: 'index.php?v=d&modal=dataStore.human.insert',
+        callback: function() { mod_insertDataStore.setOptions(_options) },
+        buttons: {
+          confirm: {
+            label: '{{Valider}}',
+            className: 'success',
+            callback: {
+              click: function(event) {
+                var args = {}
+                args.human = mod_insertDataStore.getValue()
+                args.id = mod_insertDataStore.getId()
+                if (args.human.trim() != '') {
+                    callback(args)
+                }
+                document.getElementById('mod_insertDataStoreValue')._jeeDialog.destroy()
+              }
             }
-            $(this).dialog('close');
+          },
+          cancel: {
+            label: '{{Annuler}}',
+            className: 'warning',
+            callback: {
+              click: function(event) {
+                document.getElementById('mod_insertDataStoreValue')._jeeDialog.destroy()
+              }
+            }
+          }
         }
-    });
-    $('#mod_insertDataStoreValue').dialog('open');
-};
-
+    })
+}
 
 jeedom.dataStore.remove = function(_params) {
     var paramsRequired = ['id'];
@@ -111,12 +135,12 @@ jeedom.dataStore.remove = function(_params) {
         (_params.error || paramsSpecifics.error || jeedom.private.default_params.error)(e);
         return;
     }
-    var params = $.extend({}, jeedom.private.default_params, paramsSpecifics, _params || {});
+    var params = domUtils.extend({}, jeedom.private.default_params, paramsSpecifics, _params || {});
     var paramsAJAX = jeedom.private.getParamsAJAX(params);
     paramsAJAX.url = 'core/ajax/dataStore.ajax.php';
     paramsAJAX.data = {
         action: 'remove',
         id: _params.id
     };
-    $.ajax(paramsAJAX);
-};
+    domUtils.ajax(paramsAJAX);
+}

@@ -1,23 +1,23 @@
 <?php
 
 /* This file is part of Jeedom.
- *
- * Jeedom is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * Jeedom is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with Jeedom. If not, see <http://www.gnu.org/licenses/>.
- */
+*
+* Jeedom is free software: you can redistribute it and/or modify
+* it under the terms of the GNU General Public License as published by
+* the Free Software Foundation, either version 3 of the License, or
+* (at your option) any later version.
+*
+* Jeedom is distributed in the hope that it will be useful,
+* but WITHOUT ANY WARRANTY; without even the implied warranty of
+* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+* GNU General Public License for more details.
+*
+* You should have received a copy of the GNU General Public License
+* along with Jeedom. If not, see <http://www.gnu.org/licenses/>.
+*/
 
 /* * ***************************Includes********************************* */
-require_once dirname(__FILE__) . '/../../core/php/core.inc.php';
+require_once __DIR__ . '/../../core/php/core.inc.php';
 
 class plan {
 	/*     * *************************Attributs****************************** */
@@ -30,6 +30,7 @@ class plan {
 	private $display;
 	private $css;
 	private $configuration;
+	private $_changed = false;
 
 	/*     * ***********************Methode static*************************** */
 
@@ -65,7 +66,7 @@ class plan {
 		return DB::Prepare($sql, $values, DB::FETCH_TYPE_ALL, PDO::FETCH_CLASS, __CLASS__);
 	}
 
-	public static function byLinkTypeLinkIdPlanHedaerId($_link_type, $_link_id, $_planHeader_id) {
+	public static function byLinkTypeLinkIdPlanHeaderId($_link_type, $_link_id, $_planHeader_id) {
 		$values = array(
 			'link_type' => $_link_type,
 			'link_id' => $_link_id,
@@ -79,7 +80,7 @@ class plan {
 		return DB::Prepare($sql, $values, DB::FETCH_TYPE_ROW, PDO::FETCH_CLASS, __CLASS__);
 	}
 
-	public static function removeByLinkTypeLinkIdPlanHedaerId($_link_type, $_link_id, $_planHeader_id) {
+	public static function removeByLinkTypeLinkIdPlanHeaderId($_link_type, $_link_id, $_planHeader_id) {
 		$values = array(
 			'link_type' => $_link_type,
 			'link_id' => $_link_id,
@@ -103,8 +104,8 @@ class plan {
 			'search' => '%' . $_search . '%',
 		);
 		$sql = 'SELECT ' . DB::buildField(__CLASS__) . '
-                FROM plan
-                WHERE display LIKE :search';
+		FROM plan
+		WHERE display LIKE :search';
 		return DB::Prepare($sql, $value, DB::FETCH_TYPE_ALL, PDO::FETCH_CLASS, __CLASS__);
 	}
 
@@ -114,9 +115,9 @@ class plan {
 			'not' => $_not,
 		);
 		$sql = 'SELECT ' . DB::buildField(__CLASS__) . '
-                FROM plan
-                WHERE configuration LIKE :search
-                 AND link_type !=:not';
+		FROM plan
+		WHERE configuration LIKE :search
+		AND link_type !=:not';
 		return DB::Prepare($sql, $value, DB::FETCH_TYPE_ALL, PDO::FETCH_CLASS, __CLASS__);
 	}
 
@@ -127,7 +128,7 @@ class plan {
 			$this->setCss('z-index', 1000);
 		}
 		if (in_array($this->getLink_type(), array('eqLogic', 'cmd', 'scenario'))) {
-			self::removeByLinkTypeLinkIdPlanHedaerId($this->getLink_type(), $this->getLink_id(), $this->getPlanHeader_id());
+			self::removeByLinkTypeLinkIdPlanHeaderId($this->getLink_type(), $this->getLink_id(), $this->getPlanHeader_id());
 		}
 	}
 
@@ -140,11 +141,23 @@ class plan {
 		}
 	}
 
+	public function refresh() {
+		DB::refresh($this);
+	}
+
 	public function save() {
 		DB::save($this);
 	}
 
 	public function remove() {
+		$link_type = $this->getLink_type();
+		if ($this->getLink_type() == 'image') {
+			$imgPath = $this->getDisplay('path', '');
+			if ($imgPath != '') {
+				@unlink(str_replace('data/plan/', __DIR__ . '/../../data/plan/', $imgPath));
+				@rmdir(__DIR__ . '/../../data/plan/plan_' . $this->getId());
+			}
+		}
 		DB::remove($this);
 	}
 
@@ -169,7 +182,7 @@ class plan {
 			$cmd = cmd::byId($this->getLink_id());
 			return $cmd;
 		} else if ($this->getLink_type() == 'summary') {
-			$object = object::byId($this->getLink_id());
+			$object = jeeObject::byId($this->getLink_id());
 			return $object;
 		}
 		return null;
@@ -202,59 +215,69 @@ class plan {
 				if (isset($action['options'])) {
 					$options = $action['options'];
 				}
+				$options['source'] = 'Design ' . $this->getPlanHeader()->getName() . ' ' . $action['cmd'];
 				scenarioExpression::createAndExec('action', $action['cmd'], $options);
 			} catch (Exception $e) {
-				log::add('design', 'error', __('Erreur lors de l\'exécution de ', __FILE__) . $action['cmd'] . __('. Détails : ', __FILE__) . $e->getMessage());
+				log::add('design', 'error', __('Erreur lors de l\'exécution de', __FILE__) . ' ' . $action['cmd'] . '. ' . __('Détails :', __FILE__) . ' ' . log::exception($e));
 			}
 		}
 	}
 
-	public function getHtml($_version = 'dplan') {
-		if (in_array($this->getLink_type(), array('eqLogic', 'cmd', 'scenario'))) {
+	public function getHtml($_version = 'dashboard') {
+		$linkType = $this->getLink_type();
+		if (in_array($linkType, array('eqLogic', 'cmd', 'scenario'))) {
 			$link = $this->getLink();
 			if (!is_object($link)) {
 				return;
 			}
 			return array(
-				'plan' => utils::o2a($this),
+				'plan' => jeedom::toHumanReadable(utils::o2a($this)),
 				'html' => $link->toHtml($_version),
 			);
-		} else if ($this->getLink_type() == 'plan') {
-			$html = '<span class="cursor plan-link-widget" data-link_id="' . $this->getLink_id() . '" data-offsetX="' . $this->getDisplay('offsetX') . '" data-offsetY="' . $this->getDisplay('offsetY') . '">';
-			$html .= '<a style="color:' . $this->getCss('color', 'black') . ';text-decoration:none;font-size : 1.5em;">';
+		} else if ($linkType == 'plan') {
+			$html = '<span class="cursor plan-link-widget" data-id="' . $this->getId() . '" data-link_id="' . $this->getLink_id() . '" data-offsetX="' . $this->getDisplay('offsetX') . '" data-offsetY="' . $this->getDisplay('offsetY') . '">';
+			if ($this->getDisplay('color-defaut', 1) == 1) {
+				$html .= '<a>';
+			} else {
+				$html .= '<a style="color:' . $this->getCss('color', '') . '!important;">';
+			}
 			$html .= $this->getDisplay('icon') . ' ' . $this->getDisplay('name');
 			$html .= '</a>';
 			$html .= '</span>';
 			return array(
-				'plan' => utils::o2a($this),
+				'plan' => jeedom::toHumanReadable(utils::o2a($this)),
 				'html' => $html,
 			);
-		} else if ($this->getLink_type() == 'view') {
+		} else if ($linkType == 'view') {
 			$link = 'index.php?p=view&view_id=' . $this->getLink_id();
-			$html = '<span href="' . $link . '" class="cursor view-link-widget" data-link_id="' . $this->getLink_id() . '" >';
-			$html .= '<a href="' . $link . '" class="noOnePageLoad" style="color:' . $this->getCss('color', 'black') . ';text-decoration:none;font-size : 1.5em;">';
+			$html = '<span href="' . $link . '" class="cursor view-link-widget" data-id="' . $this->getId() . '" data-link_id="' . $this->getLink_id() . '" >';
+			if ($this->getDisplay('color-defaut', 1) == 1) {
+				$html .= '<a href="' . $link . '" class="noOnePageLoad">';
+			} else {
+				$html .= '<a href="' . $link . '" class="noOnePageLoad" style="color:' . $this->getCss('color', '') . '!important;">';
+			}
 			$html .= $this->getDisplay('icon') . ' ' . $this->getDisplay('name');
 			$html .= '</a>';
 			$html .= '</span>';
 			return array(
-				'plan' => utils::o2a($this),
+				'plan' => jeedom::toHumanReadable(utils::o2a($this)),
 				'html' => $html,
 			);
-		} else if ($this->getLink_type() == 'graph') {
-			$background_color = 'background-color : white;';
+		} else if ($linkType == 'graph') {
+			$background_color = 'background-color: rgba(var(--panel-bg-color), var(--opacity)) !important;';
 			if ($this->getDisplay('transparentBackground', false)) {
 				$background_color = '';
 			}
-			$html = '<div class="graph-widget" data-graph_id="' . $this->getLink_id() . '" style="' . $background_color . 'border : solid 1px black;min-height:50px;min-width:50px;">';
+			$html = '<div class="graph-widget" data-graph_id="' . $this->getLink_id() . '" style="width:75px; height:75px;' . $background_color . '">';
 			$html .= '<span class="graphOptions" style="display:none;">' . json_encode($this->getDisplay('graph', array())) . '</span>';
-			$html .= '<div class="graph" id="graph' . $this->getLink_id() . '" style="width : 100%;height : 100%;"></div>';
+			$html .= '<div class="graph chartContainer" id="div_designGraph' . $this->getLink_id() . '" style="width:100%; height:100%;"></div>';
 			$html .= '</div>';
 			return array(
-				'plan' => utils::o2a($this),
+				'plan' => jeedom::toHumanReadable(utils::o2a($this)),
 				'html' => $html,
 			);
-		} else if ($this->getLink_type() == 'text') {
-			$html = '<div class="text-widget" data-text_id="' . $this->getLink_id() . '" style="color:' . $this->getCss('color', 'black') . ';">';
+		} else if ($linkType == 'text') {
+			$html = '<div class="text-widget" data-text_id="' . $this->getLink_id() . '">';
 			if ($this->getDisplay('name') != '' || $this->getDisplay('icon') != '') {
 				$html .= $this->getDisplay('icon') . ' ' . $this->getDisplay('text');
 			} else {
@@ -262,10 +285,10 @@ class plan {
 			}
 			$html .= '</div>';
 			return array(
-				'plan' => utils::o2a($this),
+				'plan' => jeedom::toHumanReadable(utils::o2a($this)),
 				'html' => $html,
 			);
-		} else if ($this->getLink_type() == 'image') {
+		} else if ($linkType == 'image') {
 			$html = '<div class="image-widget" data-image_id="' . $this->getLink_id() . '" style="min-width:10px;min-height:10px;">';
 			if ($this->getConfiguration('display_mode', 'image') == 'image') {
 				$html .= '<img style="width:100%;height:100%" src="' . $this->getDisplay('path', 'core/img/no_image.gif') . '"/>';
@@ -277,10 +300,10 @@ class plan {
 			}
 			$html .= '</div>';
 			return array(
-				'plan' => utils::o2a($this),
+				'plan' => jeedom::toHumanReadable(utils::o2a($this)),
 				'html' => $html,
 			);
-		} else if ($this->getLink_type() == 'zone') {
+		} else if ($linkType == 'zone') {
 			if ($this->getConfiguration('zone_mode', 'simple') == 'widget') {
 				$class = '';
 				if ($this->getConfiguration('showOnFly') == 1) {
@@ -294,25 +317,14 @@ class plan {
 				$html = '<div class="zone-widget cursor" data-zone_id="' . $this->getLink_id() . '" style="min-width:20px;min-height:20px;"></div>';
 			}
 			return array(
-				'plan' => utils::o2a($this),
+				'plan' => jeedom::toHumanReadable(utils::o2a($this)),
 				'html' => $html,
 			);
-		} else if ($this->getLink_type() == 'summary') {
-			$background_color = 'background-color : '.$this->getCss('background-color', 'black').';';
- 			if ($this->getDisplay('background-defaut', false)) {
- 				$background_color = 'background-color : black;';
- 			}
- 			if ($this->getDisplay('background-transparent', false)) {
- 				$background_color = '';
- 			}
- 			$color = 'color : '.$this->getCss('color', 'black').';';
- 			if ($this->getDisplay('color-defaut', false)) {
- 				$color = '';
- 			}
- 			$html = '<div class="summary-widget" data-summary_id="' . $this->getLink_id() . '" style="' . $background_color . $color . ';min-width:10px;min-height:10px;">';
+		} else if ($linkType == 'summary') {
+			$html = '<div class="summary-widget" data-summary_id="' . $this->getLink_id() . '" style="min-width:10px;min-height:10px;">';
 			$summary = '';
 			if ($this->getLink_id() == 0) {
-				$summary = object::getGlobalHtmlSummary($_version);
+				$summary = jeeObject::getGlobalHtmlSummary($_version);
 			} else {
 				$object = $this->getLink();
 				if (is_object($object)) {
@@ -326,7 +338,7 @@ class plan {
 			}
 			$html .= '</div>';
 			return array(
-				'plan' => utils::o2a($this),
+				'plan' => jeedom::toHumanReadable(utils::o2a($this)),
 				'html' => $html,
 			);
 		}
@@ -362,33 +374,42 @@ class plan {
 		return utils::getJsonAttr($this->css, $_key, $_default);
 	}
 
-	public function setId($id) {
-		$this->id = $id;
+	public function setId($_id) {
+		$this->_changed = utils::attrChanged($this->_changed, $this->id, $_id);
+		$this->id = $_id;
 		return $this;
 	}
 
-	public function setLink_type($link_type) {
-		$this->link_type = $link_type;
+	public function setLink_type($_link_type) {
+		$this->_changed = utils::attrChanged($this->_changed, $this->link_type, $_link_type);
+		$this->link_type = $_link_type;
 		return $this;
 	}
 
-	public function setLink_id($link_id) {
-		$this->link_id = $link_id;
+	public function setLink_id($_link_id) {
+		$this->_changed = utils::attrChanged($this->_changed, $this->link_id, $_link_id);
+		$this->link_id = $_link_id;
 		return $this;
 	}
 
 	public function setPosition($_key, $_value) {
-		$this->position = utils::setJsonAttr($this->position, $_key, $_value);
+		$position = utils::setJsonAttr($this->position, $_key, $_value);
+		$this->_changed = utils::attrChanged($this->_changed, $this->position, $position);
+		$this->position = $position;
 		return $this;
 	}
 
 	public function setDisplay($_key, $_value) {
-		$this->display = utils::setJsonAttr($this->display, $_key, $_value);
+		$display = utils::setJsonAttr($this->display, $_key, $_value);
+		$this->_changed = utils::attrChanged($this->_changed, $this->display, $display);
+		$this->display = $display;
 		return $this;
 	}
 
 	public function setCss($_key, $_value) {
-		$this->css = utils::setJsonAttr($this->css, $_key, $_value);
+		$css = utils::setJsonAttr($this->css, $_key, $_value);
+		$this->_changed = utils::attrChanged($this->_changed, $this->css, $css);
+		$this->css = $css;
 		return $this;
 	}
 
@@ -396,8 +417,9 @@ class plan {
 		return $this->planHeader_id;
 	}
 
-	public function setPlanHeader_id($planHeader_id) {
-		$this->planHeader_id = $planHeader_id;
+	public function setPlanHeader_id($_planHeader_id) {
+		$this->_changed = utils::attrChanged($this->_changed, $this->planHeader_id, $_planHeader_id);
+		$this->planHeader_id = $_planHeader_id;
 		return $this;
 	}
 
@@ -406,8 +428,18 @@ class plan {
 	}
 
 	public function setConfiguration($_key, $_value) {
-		$this->configuration = utils::setJsonAttr($this->configuration, $_key, $_value);
+		$configuration = utils::setJsonAttr($this->configuration, $_key, $_value);
+		$this->_changed = utils::attrChanged($this->_changed, $this->configuration, $configuration);
+		$this->configuration = $configuration;
 		return $this;
 	}
 
+	public function getChanged() {
+		return $this->_changed;
+	}
+
+	public function setChanged($_changed) {
+		$this->_changed = $_changed;
+		return $this;
+	}
 }

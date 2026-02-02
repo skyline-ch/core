@@ -1,21 +1,19 @@
 <?php
-
 /* This file is part of Jeedom.
- *
- * Jeedom is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * Jeedom is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with Jeedom. If not, see <http://www.gnu.org/licenses/>.
- */
-
+*
+* Jeedom is free software: you can redistribute it and/or modify
+* it under the terms of the GNU General Public License as published by
+* the Free Software Foundation, either version 3 of the License, or
+* (at your option) any later version.
+*
+* Jeedom is distributed in the hope that it will be useful,
+* but WITHOUT ANY WARRANTY; without even the implied warranty of
+* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+* GNU General Public License for more details.
+*
+* You should have received a copy of the GNU General Public License
+* along with Jeedom. If not, see <http://www.gnu.org/licenses/>.
+*/
 if (php_sapi_name() != 'cli' || isset($_SERVER['REQUEST_METHOD']) || !isset($_SERVER['argc'])) {
 	header("Statut: 404 Page non trouvée");
 	header('HTTP/1.0 404 Not Found');
@@ -26,27 +24,60 @@ if (php_sapi_name() != 'cli' || isset($_SERVER['REQUEST_METHOD']) || !isset($_SE
 }
 $datetime = date('Y-m-d H:i:s');
 echo "Watchdog Jeedom at " . $datetime . "\n";
-$wathdog_in_progress = exec('ps ax | grep "core/php/watchdog.php" | grep -v grep |  wc -l');
+$wathdog_in_progress = exec('ps ax | grep "core/php/watchdog.php" | grep -v grep | grep -v  "sh -c" |  wc -l');
 if ($wathdog_in_progress > 1) {
 	echo 'Watchdog in progress, cancel watchdog (' . $wathdog_in_progress . ')';
 	die();
 }
-
 $update_in_progress = exec('ps -C apt,dpkg |  wc -l');
 if ($update_in_progress > 1) {
 	echo 'Update (apt or dpkg) in progress, cancel watchdog';
 	die();
 }
+$output = array();
 
-/******************************Database***************************************/
+/********************************Date****************************************/
+echo 'Check Date => ';
+echo date('Y-m-d')."\n";
+if(date('Y') < 2019 || date('Y') > 2040){
+	echo 'Invalid date found, try correct it';
+	exec('sudo service ntp stop;sudo ntpdate -s time.nist.gov;sudo service ntp start');
+}
+
+/********************************Free space****************************************/
+
+$freespace = round(disk_free_space(__DIR__ . '/../../') / disk_total_space(__DIR__ . '/../../') * 100);
+echo 'Check Free space ('.$freespace.'%) => ';
+if($freespace <= 1){
+	echo "NOK\n";
+	echo "Trying cleaning\n";
+	if(file_exists(__DIR__.'/../../tmp')){
+		shell_exec('rm -rf '.__DIR__.'/../../tmp/*');
+	}
+	if(file_exists(__DIR__.'/../../log')){
+		shell_exec('rm -rf '.__DIR__.'/../../log/*');
+	}
+	$freespace = round(disk_free_space(__DIR__ . '/../../') / disk_total_space(__DIR__ . '/../../') * 100);
+	echo "Recheck Free space ('.$freespace.'%) => ";
+	if($freespace <= 1){
+		echo "NOK. Please do somethink manually...\n";
+	}else{
+		echo "OK\n";
+	}
+}else{
+	echo "OK\n";
+}
+
+if (file_exists('/.dockerinit') || file_exists('/.dockerenv')) {
+	exit(0);
+}
 
 /********************************MySQL****************************************/
 echo 'Check MySql => ';
-$output = array();
 $rc = 0;
-exec('systemctl is-enabled mysql 2>&1', $output, $rc);
-if ($rc == 0) {
-	$output = array();
+$enable = false;
+$enable = (shell_exec('ls -l /etc/rc[2-5].d/S0?mysql 2>/dev/null | wc -l') > 0);
+if ($enable) {
 	$rc = 0;
 	exec('systemctl status mysql', $output, $rc);
 	if ($rc == 0) {
@@ -65,41 +96,12 @@ if ($rc == 0) {
 } else {
 	echo "NOT_ENABLED\n";
 }
-
 /******************************Web Server**************************************/
-
-/********************************Nginx****************************************/
-echo 'Check Nginx => ';
-$output = array();
-$rc = 0;
-exec('systemctl is-enabled nginx 2>&1', $output, $rc);
-if ($rc == 0) {
-	$output = array();
-	$rc = 0;
-	exec('systemctl status nginx', $output, $rc);
-	if ($rc == 0) {
-		echo "OK\n";
-	} else {
-		echo "NOK\n";
-		echo "Trying to restart Nginx\n";
-		shell_exec('systemctl restart nginx');
-		echo "Recheck Nginx => ";
-		exec('systemctl status nginx', $output, $rc);
-		if ($rc != 0) {
-			echo "NOK. Please check manually why...\n";
-		}
-	}
-} else {
-	echo "NOT_ENABLED\n";
-}
-
 /********************************Apache****************************************/
 echo 'Check Apache => ';
-$output = array();
 $rc = 0;
-exec('systemctl is-enabled apache2 2>&1', $output, $rc);
-if ($rc == 0) {
-	$output = array();
+$enable = (shell_exec('ls -l /etc/rc[2-5].d/S0?apache2 2>/dev/null | wc -l') > 0);
+if ($enable) {
 	$rc = 0;
 	exec('systemctl status apache2', $output, $rc);
 	if ($rc == 0) {

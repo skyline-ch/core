@@ -1,11 +1,14 @@
 /*
-  Highcharts JS v6.0.4 (2017-12-15)
+ Highstock JS v10.3.2 (2022-11-28)
 
- Indicator series type for Highstock
+ Indicator series type for Highcharts Stock
 
- (c) 2010-2017 Kacper Madej
+ (c) 2010-2021 Kacper Madej
 
  License: www.highcharts.com/license
 */
-(function(a){"object"===typeof module&&module.exports?module.exports=a:a(Highcharts)})(function(a){(function(a){function g(b,c){c*=(c+1)/2;return b.reduce(function(b,c,a){return[null,b[1]+c[1]*(a+1)]})[1]/c}function n(b,c,m,a){m=g(b,b.length);c=c[a-1];b.shift();return[c,m]}var q=a.isArray;a=a.seriesType;a("wma","sma",{name:"WMA (9)",params:{index:3,period:9}},{getValues:function(b,c){var a=c.period,e=b.xData,g=(b=b.yData)?b.length:0,d=1,r=e[0],p=b[0],h=[],k=[],l=[],f=-1;if(e.length<a)return!1;q(b[0])&&
-(f=c.index,p=b[0][f]);for(c=[[r,p]];d!==a;)c.push([e[d],0>f?b[d]:b[d][f]]),d++;for(a=d;a<g;a++)d=n(c,e,b,a),h.push(d),k.push(d[0]),l.push(d[1]),c.push([e[a],0>f?b[a]:b[a][f]]);d=n(c,e,b,a);h.push(d);k.push(d[0]);l.push(d[1]);return{values:h,xData:k,yData:l}}})})(a)});
+(function(a){"object"===typeof module&&module.exports?(a["default"]=a,module.exports=a):"function"===typeof define&&define.amd?define("highcharts/indicators/wma",["highcharts","highcharts/modules/stock"],function(f){a(f);a.Highcharts=f;return a}):a("undefined"!==typeof Highcharts?Highcharts:void 0)})(function(a){function f(a,d,f,l){a.hasOwnProperty(d)||(a[d]=l.apply(null,f),"function"===typeof CustomEvent&&window.dispatchEvent(new CustomEvent("HighchartsModuleLoaded",{detail:{path:d,module:a[d]}})))}
+a=a?a._modules:{};f(a,"Stock/Indicators/WMA/WMAIndicator.js",[a["Core/Series/SeriesRegistry.js"],a["Core/Utilities.js"]],function(a,d){function f(a,b){b*=(b+1)/2;return a.reduce(function(c,a,b){return[null,c[1]+a[1]*(b+1)]})[1]/b}function l(a,b,c,g){c=f(a,a.length);b=b[g-1];a.shift();return[b,c]}var q=this&&this.__extends||function(){var a=function(b,c){a=Object.setPrototypeOf||{__proto__:[]}instanceof Array&&function(a,c){a.__proto__=c}||function(a,c){for(var b in c)c.hasOwnProperty(b)&&(a[b]=c[b])};
+return a(b,c)};return function(b,c){function g(){this.constructor=b}a(b,c);b.prototype=null===c?Object.create(c):(g.prototype=c.prototype,new g)}}(),k=a.seriesTypes.sma,r=d.isArray,t=d.merge;d=function(a){function b(){var c=null!==a&&a.apply(this,arguments)||this;c.data=void 0;c.options=void 0;c.points=void 0;return c}q(b,a);b.prototype.getValues=function(a,b){var c=b.period,d=a.xData,f=(a=a.yData)?a.length:0,e=1,g=d[0],k=a[0],m=[],n=[],p=[],h=-1;if(!(d.length<c)){r(a[0])&&(h=b.index,k=a[0][h]);for(b=
+[[g,k]];e!==c;)b.push([d[e],0>h?a[e]:a[e][h]]),e++;for(c=e;c<f;c++)e=l(b,d,a,c),m.push(e),n.push(e[0]),p.push(e[1]),b.push([d[c],0>h?a[c]:a[c][h]]);e=l(b,d,a,c);m.push(e);n.push(e[0]);p.push(e[1]);return{values:m,xData:n,yData:p}}};b.defaultOptions=t(k.defaultOptions,{params:{index:3,period:9}});return b}(k);a.registerSeriesType("wma",d);"";return d});f(a,"masters/indicators/wma.src.js",[],function(){})});
+//# sourceMappingURL=wma.js.map

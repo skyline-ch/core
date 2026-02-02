@@ -1,24 +1,24 @@
 <?php
 
 /* This file is part of Jeedom.
- *
- * Jeedom is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * Jeedom is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with Jeedom. If not, see <http://www.gnu.org/licenses/>.
- */
+*
+* Jeedom is free software: you can redistribute it and/or modify
+* it under the terms of the GNU General Public License as published by
+* the Free Software Foundation, either version 3 of the License, or
+* (at your option) any later version.
+*
+* Jeedom is distributed in the hope that it will be useful,
+* but WITHOUT ANY WARRANTY; without even the implied warranty of
+* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+* GNU General Public License for more details.
+*
+* You should have received a copy of the GNU General Public License
+* along with Jeedom. If not, see <http://www.gnu.org/licenses/>.
+*/
 
 /* * ***************************Includes********************************* */
 
-require_once dirname(__FILE__) . '/../../core/php/core.inc.php';
+require_once __DIR__ . '/../../core/php/core.inc.php';
 
 class repo_market {
 	/*     * *************************Attributs****************************** */
@@ -30,33 +30,8 @@ class repo_market {
 		'backup' => true,
 		'hasConfiguration' => true,
 		'proxy' => true,
-		'sendPlugin' => true,
 		'hasStore' => true,
-		'hasScenarioStore' => true,
-		'test' => true,
-	);
-
-	public static $_configuration = array(
-		'configuration' => array(
-			'address' => array(
-				'name' => 'Adresse',
-				'type' => 'input',
-			),
-			'username' => array(
-				'name' => 'Nom d\'utilisateur',
-				'type' => 'input',
-			),
-			'password' => array(
-				'name' => 'Mot de passe',
-				'type' => 'password',
-			),
-		),
-		'parameters_for_add' => array(
-			'version' => array(
-				'name' => 'Version : beta, release, stable',
-				'type' => 'input',
-			),
-		),
+		'test' => true
 	);
 
 	private $id;
@@ -93,6 +68,93 @@ class repo_market {
 
 	/*     * ***********************Méthodes statiques*************************** */
 
+	public static function getConfigurationOption() {
+		return array(
+			'configuration' => array(
+				'address' => array(
+					'name' => __('Adresse', __FILE__),
+					'type' => 'input',
+				),
+				'username' => array(
+					'name' => __('Nom d\'utilisateur', __FILE__),
+					'type' => 'input',
+				),
+				'password' => array(
+					'name' => __('Mot de passe', __FILE__),
+					'type' => 'password_noshow',
+				),
+				'no_ssl_verify' => array(
+					'name' => __('Pas de validation SSL (non recommandé)', __FILE__),
+					'type' => 'checkbox',
+				),
+				'cloud::backup::name' => array(
+					'name' => __('[Backup cloud] Nom du dossier de backup', __FILE__),
+					'type' => 'input',
+				),
+				'cloud::backup::password' => array(
+					'name' => __('[Backup cloud] Mot de passe', __FILE__),
+					'type' => 'password',
+				),
+				'cloud::backup::password_confirmation' => array(
+					'name' => __('[Backup cloud] Mot de passe (confirmation)', __FILE__),
+					'type' => 'password',
+				),
+				'cloud::monitoring::disable' => array(
+					'name' => __('[Monitoring cloud] Désactiver', __FILE__),
+					'type' => 'checkbox',
+				)
+			),
+			'parameters_for_add' => array(
+				'version' => array(
+					'name' => __('Version : beta, stable', __FILE__),
+					'type' => 'input',
+				),
+			),
+		);
+	}
+
+	public static function pullInstall() {
+		$market = self::getJsonRpc();
+		if (!$market->sendRequest('register::pluginToInstall')) {
+			throw new Exception($market->getError(), $market->getErrorCode());
+		}
+		$results = $market->getResult();
+		if (!is_array($results) || count($results) == 0 || !is_array($results['plugins']) || count($results['plugins']) == 0) {
+			return array('number' => 0);
+		}
+		$nbInstall = 0;
+		$lastInstallDate = config::byKey('market::lastDatetimePluginInstall', 'core', 0);
+		foreach ($results['plugins'] as &$plugin) {
+			if ($plugin['datetime'] < $lastInstallDate) {
+				continue;
+			}
+			$plugin['version'] = isset($plugin['version']) ? $plugin['version'] : 'stable';
+			try {
+				$repo = self::byId($plugin['id']);
+				if (!is_object($repo)) {
+					continue;
+				}
+				log::add('market', 'debug', __('Lancement de l\'installation de', __FILE__) . ' ' . $repo->getLogicalId() . ' ' . __('en version', __FILE__) . ' ' . $plugin['version']);
+				$update = update::byTypeAndLogicalId($repo->getType(), $repo->getLogicalId());
+				if (!is_object($update)) {
+					$update = new update();
+				}
+				$update->setSource('market');
+				$update->setLogicalId($repo->getLogicalId());
+				$update->setType($repo->getType());
+				$update->setLocalVersion($repo->getDatetime($plugin['version']));
+				$update->setConfiguration('version', $plugin['version']);
+				$update->setConfiguration('user',null);
+				$update->save();
+				$update->doUpdate();
+				$nbInstall++;
+			} catch (\Exception $e) {
+			}
+		}
+		config::save('market::lastDatetimePluginInstall', $results['datetime']);
+		return array('number' => $nbInstall);
+	}
+
 	public static function checkUpdate(&$_update) {
 		if (is_array($_update)) {
 			if (count($_update) < 1) {
@@ -112,6 +174,9 @@ class repo_market {
 					$update->setStatus($market_info['status']);
 					$update->setConfiguration('market', $market_info['market']);
 					$update->setRemoteVersion($market_info['datetime']);
+					if ($update->getConfiguration('version') == '') {
+						$update->setConfiguration('version', 'stable');
+					}
 					$update->save();
 				}
 			}
@@ -129,7 +194,7 @@ class repo_market {
 		if (is_object($market)) {
 			$file = $market->install($_update->getConfiguration('version', 'stable'));
 		} else {
-			throw new Exception(__('Objet introuvable sur le market : ', __FILE__) . $_update->getLogicalId() . '/' . $_update->getType());
+			throw new Exception(__('Objet introuvable sur le market :', __FILE__) . ' ' . $_update->getLogicalId() . '/' . $_update->getType());
 		}
 		return array('path' => $file, 'localVersion' => $market->getDatetime($_update->getConfiguration('version', 'stable')));
 	}
@@ -151,140 +216,242 @@ class repo_market {
 				$market->remove();
 			}
 		} catch (Exception $e) {
-
 		} catch (Error $e) {
-
 		}
 	}
 
 	public static function objectInfo($_update) {
-		$url = 'https://jeedom.github.io/documentation/plugins/' . $_update->getLogicalId() . '/' . config::byKey('language', 'core', 'fr_FR') . '/index.html';
-		if ($_update->getConfiguration('third_plugin', null) === null) {
-			$_update->setConfiguration('third_plugin', 0);
-			$header = get_headers($url);
-			if (strpos($header[0], '200') === false) {
-				$_update->setConfiguration('third_plugin', 1);
-				$url = 'https://jeedom.github.io/documentation/third_plugin/' . $_update->getLogicalId() . '/' . config::byKey('language', 'core', 'fr_FR') . '/index.html';
-			}
-			$_update->save();
-		} elseif ($_update->getConfiguration('third_plugin', 0) == 1) {
-			$url = 'https://jeedom.github.io/documentation/third_plugin/' . $_update->getLogicalId() . '/' . config::byKey('language', 'core', 'fr_FR') . '/index.html';
-		}
 		return array(
-			'doc' => $url,
-			'changelog' => $url . '#_changelog',
-			'display' => 'https://market.jeedom.fr/index.php?v=d&p=market&type=plugin&plugin_id=' . $_update->getLogicalId(),
+			'doc' => 'https://doc.jeedom.com',
+			'changelog' => 'https://doc.jeedom.com',
+			'display' => 'https://market.jeedom.com/index.php?v=d&p=market&type=plugin&plugin_id=' . $_update->getLogicalId(),
 		);
 	}
 
 	/*     * ***********************BACKUP*************************** */
 
-	public static function sendBackup($_path) {
-		$market = self::getJsonRpc();
-		$file = array(
-			'file' => '@' . realpath($_path),
-		);
-		if (!$market->sendRequest('backup::upload', array(), 7200, $file)) {
-			throw new Exception($market->getError());
-		}
-	}
-
-	public static function uploadChunk($path, $chunkStart, $chunkEnd, $id, $fileSize) {
-		$market = self::getJsonRpc();
-		$file = fopen($path, "r");
-		fseek($file, $chunkStart - $fileSize, SEEK_END);
-		$chunkSize = (($diff = $chunkEnd - $chunkStart) < 10240) ? 10240 : $diff;
-		$chunk = fread($file, $chunkSize);
-		$tmp = tmpfile();
-		$path = stream_get_meta_data($tmp);
-		fwrite($tmp, $chunk);
-		$rangeHeader = array('chunkStart' => $chunkStart, 'chunkEnd' => $chunkEnd, 'chunkSize' => $chunkSize, 'fileSize' => $fileSize);
-		if (!$market->sendRequest('backup::put', array('id' => $id, 'rangeHeader' => $rangeHeader), 7300, array('file' => '@' . $path['uri']))) {
-			fclose($tmp);
-			throw new Exception($market->getError());
-		}
-		$status = $market->getResult();
-		fclose($tmp);
-		return $status;
-	}
-
-	public static function sendBackupCloud($_path, $_chunksize = 1024000) {
-		$market = self::getJsonRpc();
-		if (!$market->sendRequest('backup::create', array('filename' => pathinfo($_path, PATHINFO_BASENAME), 'filesize' => filesize($_path), 'chunksize' => $_chunksize, 'checksum' => md5_file($_path)))) {
-			throw new Exception($market->getError());
-		}
-		$backup = $market->getResult();
-		if (isset($backup["completed_at"]) && $backup["completed_at"]) {
-			log::add('backupCloud', 'info', 'la sauvegarde est déjà sur le cloud');
-			return false;
-		}
-		if (isset($backup["retry"]) && $backup["retry"] > 5) {
-			log::add('backupCloud', 'info', 'Téléversement impossible, nombre d\'essais : 5');
-			return false;
-		}
-		$fileSize = filesize($_path);
-		while (!$backup["completed_at"]) {
-			try {
-				$backup = repo_market::uploadChunk($_path, $backup["chunk_start"], $backup["chunk_end"], $backup["id"], $fileSize);
-			} catch (Exception $e) {
-				echo $e->getMessage() . "\n";
-				repo_market::sendBackupCloud($_path);
+	public static function backup_createFolderIsNotExist() {
+		$request_http = new com_http(config::byKey('service::backup::url').'/webdav/'.config::byKey('market::username'),config::byKey('market::username'),config::byKey('market::password'));
+		$request_http->setCURLOPT(array(
+				CURLOPT_CUSTOMREQUEST => "PROPFIND"
+		));
+		$xml = simplexml_load_string($request_http->exec());
+		$ns = $xml->getNamespaces(true);
+		$child = $xml->children($ns['D']);
+		$found = false; 
+		foreach ($child->response as $file) {
+			if($file->propstat->prop->getcontenttype){
+				continue;
+			}
+			$folder = trim(trim(str_replace('http://backup.jeedom.com/webdav/'.config::byKey('market::username'),'',$file->href),'/'));
+			if($folder == ''){
+				continue;
+			}
+			if($folder == config::byKey('market::cloud::backup::name')){
+				$found = true;
 				break;
 			}
-
 		}
-		if ($backup["completed_at"] != "") {
-			log::add('backupCloud', 'info', 'la sauvegarde a fini le téléversement');
-			return true;
+		if (!$found) {
+			$request_http = new com_http(config::byKey('service::backup::url').'/webdav/'.config::byKey('market::username').'/'.rawurldecode(config::byKey('market::cloud::backup::name')),config::byKey('market::username'),config::byKey('market::password'));
+			$request_http->setCURLOPT(array(
+					CURLOPT_CUSTOMREQUEST => "MKCOL"
+			));
+			$request_http->exec();
 		}
 	}
 
-	public static function listeBackup() {
-		$market = self::getJsonRpc();
-		if (!$market->sendRequest('backup::liste', array())) {
-			throw new Exception($market->getError());
+	public static function backup_send($_path) {
+		if (!config::byKey('service::backup::enable')) {
+			throw new Exception(__('Erreur d\'envoi du backup au cloud. Avez-vous bien un abonnement au backup cloud ?', __FILE__));
 		}
-		return $market->getResult();
+		if (config::byKey('market::cloud::backup::password') == '') {
+			throw new Exception(__('Vous devez obligatoirement avoir un mot de passe pour le backup cloud (allez dans Réglages -> Système -> Configuration puis onglet Mise à jour/Market)', __FILE__));
+		}
+		if (config::byKey('market::cloud::backup::password') != config::byKey('market::cloud::backup::password_confirmation')) {
+			throw new Exception(__('Le mot de passe du backup cloud n\'est pas identique à la confirmation', __FILE__));
+		}
+		self::backup_clean($_path);
+		self::backup_createFolderIsNotExist();
+		try {
+			if (!file_exists('/tmp/jeedom_gnupg')) {
+				mkdir('/tmp/jeedom_gnupg');
+			}
+			com_shell::execute('sudo chmod 777 -R /tmp/jeedom_gnupg');
+			$cmd = 'echo "' . config::byKey('market::cloud::backup::password') . '" | gpg --homedir /tmp/jeedom_gnupg --batch --yes --passphrase-fd 0 -c ' . $_path;
+			com_shell::execute($cmd);
+            $cmd = "curl --user '".config::byKey('market::username').":".config::byKey('market::password')."' -T '".$_path . '.gpg'."' '".config::byKey('service::backup::url').'/webdav/'.config::byKey('market::username'). '/' . rawurldecode(config::byKey('market::cloud::backup::name'))."/'";
+            com_shell::execute($cmd);
+			unlink($_path . '.gpg');
+			rrmdir('/tmp/jeedom_gnupg');
+		} catch (\Exception $e) {
+			unlink($_path . '.gpg');
+			rrmdir('/tmp/jeedom_gnupg');
+			throw $e;
+		}
 	}
 
-	public static function retoreBackup($_backup) {
-		$url = config::byKey('market::address') . "/core/php/downloadBackup.php?backup=" . $_backup . '&hwkey=' . jeedom::getHardwareKey() . '&username=' . urlencode(config::byKey('market::username')) . '&password=' . self::getPassword() . '&password_type=sha1';
-		$tmp_dir = jeedom::getTmpFolder('market');
-		$tmp = $tmp_dir . '/' . $_backup;
-		$opts = array(
-			"ssl" => array(
-				"verify_peer" => false,
-				"verify_peer_name" => false,
-			),
-		);
-		file_put_contents($tmp, fopen($url, 'r', false, stream_context_create($opts)));
-		if (!file_exists($tmp)) {
-			throw new Exception(__('Impossible de télécharger la sauvegarde : ', __FILE__) . $url . '.');
+	public static function backup_clean($_path) {
+		if (!config::byKey('service::backup::enable') || config::byKey('market::cloud::backup::password') == '') {
+			return;
 		}
-		if (!file_exists(dirname(__FILE__) . '/../../backup/')) {
-			mkdir(dirname(__FILE__) . '/../../backup/');
+		$limit = 3700;
+		self::backup_createFolderIsNotExist();
+
+		$request_http = new com_http(config::byKey('service::backup::url').'/webdav/'.config::byKey('market::username'),config::byKey('market::username'),config::byKey('market::password'));
+		$request_http->setCURLOPT(array(
+				CURLOPT_CUSTOMREQUEST => "PROPFIND"
+		));
+		$xml = simplexml_load_string($request_http->exec());
+		$ns = $xml->getNamespaces(true);
+		$child = $xml->children($ns['D']);
+		$total_size = 0;
+		$files = []; 
+		foreach ($child->response as $file) {
+			if(!$file->propstat->prop->getcontenttype){
+				continue;
+			}
+			$files[] = array(
+				'href' => (string) $file->href,
+				'name' => (string) $file->propstat->prop->displayname,
+				'size' => (int) $file->propstat->prop->getcontentlength,
+				'timestamp' => strtotime($file->propstat->prop->getlastmodified)
+			);
+			$total_size += $file->propstat->prop->getcontentlength;
 		}
-		$backup_path = dirname(__FILE__) . '/../../backup/' . $_backup;
-		if (!copy($tmp, $backup_path)) {
-			throw new Exception(__('Impossible de copier le fichier de  : ', __FILE__) . $tmp . '.');
+		if (($total_size / 1024 / 1024) < $limit - (filesize($_path) / 1024 / 1024)) {
+			return;
 		}
-		if (!file_exists($backup_path)) {
-			throw new Exception(__('Impossible de trouver le fichier : ', __FILE__) . $backup_path . '.');
+		echo __('Besoin de faire de la place sur le stockage distant', __FILE__) . "\n";
+		if (!empty($files)) {
+			usort($files, function ($a, $b) {
+				return $a["timestamp"] - $b["timestamp"];
+			});
 		}
-		jeedom::restore('backup/' . $_backup, true);
+		$nb = 0;
+		while (($total_size / 1024 / 1024) > $limit - (filesize($_path) / 1024 / 1024)) {
+			if (count($files) == 0) {
+				throw new \Exception(__('Pas assez de place et aucun backup à supprimer', __FILE__));
+			}
+			$file = array_shift($files);
+			echo __('Supression du backup cloud :', __FILE__) . ' ' . $file['name'] . "\n";
+			$request_http = new com_http($file['href'],config::byKey('market::username'),config::byKey('market::password'));
+			$request_http->setCURLOPT(array(
+					CURLOPT_CUSTOMREQUEST => "DELETE"
+			));
+			$request_http->exec();
+			$total_size -= $file['size'];
+			$nb++;
+			if ($nb > 100) {
+				throw new \Exception(__('Erreur lors du nettoyage des backups cloud, supression > 100', __FILE__));
+			}
+		}
+	}
+
+	public static function backup_list() {
+		if (!config::byKey('service::backup::enable') || config::byKey('market::cloud::backup::password') == '') {
+			return array();
+		}
+		self::backup_createFolderIsNotExist();
+		$request_http = new com_http(config::byKey('service::backup::url').'/webdav/'.config::byKey('market::username'). '/' . rawurldecode(config::byKey('market::cloud::backup::name')),config::byKey('market::username'),config::byKey('market::password'));
+		$request_http->setCURLOPT(array(
+				CURLOPT_CUSTOMREQUEST => "PROPFIND"
+		));
+		$xml = simplexml_load_string($request_http->exec());
+		$ns = $xml->getNamespaces(true);
+		$child = $xml->children($ns['D']);
+		$files = array();
+		foreach ($child->response as $file) {
+			if(!$file->propstat->prop->getcontenttype){
+				continue;
+			}
+			$files[] = array(
+            	'name' => (string) $file->propstat->prop->displayname,
+                'timestamp' => strtotime($file->propstat->prop->getlastmodified)
+            );
+		}
+		function cmp($a,$b){ // $a,$b are reference to first index of array
+			return strcmp($a["timestamp"], $b["timestamp"]);
+		}
+		usort($files, "cmp");
+		$result = array();
+		foreach ($files as $file) {
+			$result[] = $file['name'];
+		}
+		return array_reverse($result);
+	}
+
+	public static function backup_restore($_backup) {
+		if (config::byKey('market::cloud::backup::password') != config::byKey('market::cloud::backup::password_confirmation')) {
+			throw new Exception(__('Le mot de passe du backup cloud n\'est pas identique à la confirmation', __FILE__));
+		}
+		$backup_dir = calculPath(config::byKey('backup::path'));
+		if (!file_exists($backup_dir)) {
+			mkdir($backup_dir, 0770, true);
+		}
+		if (!is_writable($backup_dir)) {
+			throw new Exception('Impossible d\'accéder au dossier de sauvegarde. Veuillez vérifier les droits : ' . $backup_dir);
+		}
+		$path = $backup_dir . '/' . $_backup;
+		if (file_exists($path)) {
+			unlink($path);
+		}
+		if (!file_exists('/tmp/jeedom_gnupg')) {
+			mkdir('/tmp/jeedom_gnupg');
+		}
+		com_shell::execute('sudo chmod 777 -R /tmp/jeedom_gnupg');
+		$cmd = 'cd ' . $backup_dir . ';wget "https://' . rawurlencode(config::byKey('market::username')) . ':' . rawurlencode(config::byKey('market::password')) . '@' . str_replace('https://', '', config::byKey('service::backup::url')) . '/webdav/' . rawurlencode(config::byKey('market::username')) . '/' . rawurlencode(config::byKey('market::cloud::backup::name')) . '/' . $_backup . '"';
+		com_shell::execute($cmd);
+		$cmd = 'echo "' . config::byKey('market::cloud::backup::password') . '" | gpg --homedir /tmp/jeedom_gnupg --batch --yes --passphrase-fd 0 --output ' . $backup_dir . '/cloud-' . str_replace('.gpg', '', $_backup) . ' -d ' . $backup_dir . '/' . $_backup;
+		com_shell::execute($cmd);
+		unlink($backup_dir . '/' . $_backup);
+		rrmdir('/tmp/jeedom_gnupg');
 	}
 
 	/*     * ***********************CRON*************************** */
 
 	public static function cronHourly() {
-		if (strtotime(config::byKey('market::lastCommunication', 'core', 0)) > (strtotime('now') - 24 * 3600)) {
+		if (strtotime(config::byKey('market::lastCommunication', 'core', 0)) > (strtotime('now') - (24 * 3600))) {
 			return;
 		}
-		sleep(rand(0, 900));
+		sleep(rand(0, 1800));
 		try {
 			self::test();
 		} catch (Exception $e) {
+		}
+	}
 
+	public static function cron5() {
+		try {
+			if (config::byKey('service::monitoring::enable') && config::byKey('cloud::monitoring::disable', 'core', 0) == 0) {
+				sleep(rand(1, 120));
+				$data = array(
+					'health' => jeedom::health(),
+					'name' => config::byKey('name'),
+					'hwkey' => jeedom::getHardwareKey(),
+					'language' => config::byKey('language')
+				);
+				$url = config::byKey('service::monitoring::url') . '/service/monitoring';
+				$request_http = new com_http($url);
+				$request_http->setHeader(array(
+					'Content-Type: application/json',
+					'Autorization: ' . sha512(mb_strtolower(config::byKey('market::username')) . ':' . config::byKey('market::password'))
+				));
+				$request_http->setPost(json_encode($data));
+				try {
+					$result = json_decode($request_http->exec(60, 1), true);
+					if ($result == null || $result['state'] != 'ok') {
+						sleep(rand(5,45));
+						$result = json_decode($request_http->exec(60, 1), true);
+					}
+					if ($result == null || $result['state'] != 'ok') {
+						log::add('monitoring_cloud', 'debug', __('Erreur sur le monitoring cloud :', __FILE__) . ' ' . json_encode($result));
+					}
+				} catch (\Exception $e) {
+					log::add('monitoring_cloud', 'debug', __('Erreur sur le monitoring cloud :', __FILE__) . ' ' . $e->getMessage());
+				}
+			}
+		} catch (Exception $e) {
 		}
 	}
 
@@ -346,10 +513,10 @@ class repo_market {
 						$return['status'] = 'ok';
 					}
 				} catch (Exception $e) {
-					log::add('market', 'debug', __('Erreur repo_market::getinfo : ', __FILE__) . $e->getMessage());
+					log::add('market', 'debug', __('Erreur repo_market::getinfo :', __FILE__) . ' ' . $e->getMessage());
 					$return['status'] = 'ok';
 				} catch (Error $e) {
-					log::add('market', 'debug', __('Erreur repo_market::getinfo : ', __FILE__) . $e->getMessage());
+					log::add('market', 'debug', __('Erreur repo_market::getinfo :', __FILE__) . ' ' . $e->getMessage());
 					$return['status'] = 'ok';
 				}
 				$returns[$logicalId] = $return;
@@ -397,10 +564,10 @@ class repo_market {
 				}
 			}
 		} catch (Exception $e) {
-			log::add('market', 'debug', __('Erreur repo_market::getinfo : ', __FILE__) . $e->getMessage());
+			log::add('market', 'debug', __('Erreur repo_market::getinfo :', __FILE__) . ' ' . $e->getMessage());
 			$return['status'] = 'ok';
 		} catch (Error $e) {
-			log::add('market', 'debug', __('Erreur repo_market::getinfo : ', __FILE__) . $e->getMessage());
+			log::add('market', 'debug', __('Erreur repo_market::getinfo :', __FILE__) . ' ' . $e->getMessage());
 			$return['status'] = 'ok';
 		}
 		return $return;
@@ -415,7 +582,7 @@ class repo_market {
 			$_ticket['user_plugin'] .= $plugin->getId();
 			$update = $plugin->getUpdate();
 			if (is_object($update)) {
-				$_ticket['user_plugin'] .= '[' . $update->getConfiguration('version', 'stable') . ',' . $update->getLocalVersion() . ']';
+				$_ticket['user_plugin'] .= '[' . $update->getConfiguration('version', 'stable') . ',' . $update->getSource() . ',' . $update->getLocalVersion() . ']';
 			}
 			$_ticket['user_plugin'] .= ',';
 		}
@@ -425,8 +592,7 @@ class repo_market {
 		}
 		$_ticket['options']['jeedom_version'] = jeedom::version();
 		$_ticket['options']['uname'] = shell_exec('uname -a');
-		$support_file = makeZipSupport();
-		if (!$jsonrpc->sendRequest('ticket::save', array('ticket' => $_ticket), 300, array('file' => '@' . $support_file))) {
+		if (!$jsonrpc->sendRequest('ticket::save', array('ticket' => $_ticket), 300)) {
 			throw new Exception($jsonrpc->getErrorMessage());
 		}
 		if ($_ticket['openSupport'] == 1) {
@@ -438,7 +604,7 @@ class repo_market {
 	public static function supportAccess($_enable = true, $_key = '') {
 		$jsonrpc = self::getJsonRpc();
 		$url = network::getNetworkAccess('external') . '/index.php?auth=' . $_key;
-		if (!$jsonrpc->sendRequest('register::supportAccess', array('enable' => $_enable, 'url' => $url))) {
+		if (!$jsonrpc->sendRequest('register::supportAccess', array('enable' => $_enable, 'urlSupport' => $url))) {
 			throw new Exception($jsonrpc->getErrorMessage());
 		}
 	}
@@ -481,57 +647,43 @@ class repo_market {
 		try {
 			$internalIp = network::getNetworkAccess('internal', 'ip');
 		} catch (Exception $e) {
-
 		}
 		$uname = shell_exec('uname -a');
-		if (config::byKey('market::username') != '' && config::byKey('market::password') != '') {
-			$params = array(
-				'username' => config::byKey('market::username'),
-				'password' => self::getPassword(),
-				'password_type' => 'sha1',
-				'jeedomversion' => jeedom::version(),
-				'hwkey' => jeedom::getHardwareKey(),
-				'addrComplement' => config::byKey('externalComplement'),
-				'information' => array(
-					'nbMessage' => message::nbMessage(),
-					'nbUpdate' => update::nbNeedUpdate(),
-					'hardware' => (method_exists('jeedom', 'getHardwareName')) ? jeedom::getHardwareName() : '',
-					'uname' => $uname,
-				),
-				'localIp' => $internalIp,
-				'jeedom_name' => config::byKey('name'),
-				'plugin_install_list' => plugin::listPlugin(true, false, false, true),
-			);
-			if (config::byKey('market::allowDNS') != 1) {
-				$params['addr'] = config::byKey('externalAddr');
-				$params['addrProtocol'] = config::byKey('externalProtocol');
-				$params['addrPort'] = config::byKey('externalPort');
-			}
-			$jsonrpc = new jsonrpcClient(config::byKey('market::address') . '/core/api/api.php', '', $params);
-		} else {
-			$jsonrpc = new jsonrpcClient(config::byKey('market::address') . '/core/api/api.php', '', array(
-				'jeedomversion' => jeedom::version(),
-				'hwkey' => jeedom::getHardwareKey(),
-				'localIp' => $internalIp,
-				'jeedom_name' => config::byKey('name'),
-				'plugin_install_list' => plugin::listPlugin(true, false, false, true),
-				'information' => array(
-					'nbMessage' => message::nbMessage(),
-					'nbUpdate' => update::nbNeedUpdate(),
-					'hardware' => (method_exists('jeedom', 'getHardwareName')) ? jeedom::getHardwareName() : '',
-					'uname' => $uname,
-				),
-			));
+		$params = array(
+			'username' => config::byKey('market::username'),
+			'password' => self::getPassword(),
+			'password_type' => 'sha1',
+			'jeedomversion' => jeedom::version(),
+			'hwkey' => jeedom::getHardwareKey(),
+			'information' => array(
+				'nbMessage' => message::nbMessage(),
+				'nbUpdate' => update::nbNeedUpdate(),
+				'hardware' => (method_exists('jeedom', 'getHardwareName')) ? jeedom::getHardwareName() : '',
+				'uname' => $uname,
+				'language' => config::byKey('language'),
+			),
+			'market_api_key' => jeedom::getApiKey('apimarket'),
+			'localIp' => $internalIp,
+			'jeedom_name' => config::byKey('name'),
+			'plugin_install_list' => plugin::listPlugin(false, false, false, true),
+		);
+		if (config::byKey('market::allowDNS') != 1 || config::byKey('network::disableMangement') == 1) {
+			$params['url'] = network::getNetworkAccess('external');
 		}
+		$jsonrpc = new jsonrpcClient(config::byKey('market::address') . '/core/api/api.php', '', $params);
 		$jsonrpc->setCb_class('repo_market');
 		$jsonrpc->setCb_function('postJsonRpc');
-		$jsonrpc->setNoSslCheck(true);
+		if (config::byKey('market::no_ssl_verify') == 1) {
+			$jsonrpc->setNoSslCheck(true);
+		}
 		return $jsonrpc;
 	}
 
 	public static function postJsonRpc(&$_result) {
+		config::save('market::lastCommunication', date('Y-m-d H:i:s'));
 		if (is_array($_result)) {
 			$restart_dns = false;
+			$restart_monitoring = false;
 			if (isset($_result['register::dnsToken']) && config::byKey('dns::token') != $_result['register::dnsToken']) {
 				config::save('dns::token', $_result['register::dnsToken']);
 				$restart_dns = true;
@@ -540,34 +692,55 @@ class repo_market {
 				config::save('dns::number', $_result['register::dnsNumber']);
 				$restart_dns = true;
 			}
+			if (isset($_result['register::vpnurl']) && config::byKey('dns::vpnurl') != $_result['register::vpnurl']) {
+				config::save('dns::vpnurl', $_result['register::vpnurl']);
+				$restart_dns = true;
+			}
 			if (isset($_result['register::vpnPort']) && config::byKey('vpn::port') != $_result['register::vpnPort']) {
 				config::save('vpn::port', $_result['register::vpnPort']);
 				$restart_dns = true;
 			}
+			if (isset($_result['register::vpnProtocol']) && config::byKey('vpn::protocol') != $_result['register::vpnProtocol']) {
+				config::save('vpn::protocol', $_result['register::vpnProtocol']);
+			}
+			if (isset($_result['dns::remote']) && config::byKey('dns::remote') != $_result['dns::remote']) {
+				config::save('dns::remote', $_result['dns::remote']);
+				$restart_dns = true;
+			} elseif (!isset($_result['dns::remote']) && config::byKey('dns::remote') != '') {
+				config::save('dns::remote', '');
+				$restart_dns = true;
+			}
+			if (isset($_result['service::monitoring::enable']) && config::byKey('service::monitoring::enable') != $_result['service::monitoring::enable']) {
+				config::save('service::monitoring::enable', $_result['service::monitoring::enable']);
+			}
+			if (isset($_result['service::backup::enable']) && config::byKey('service::backup::enable') != $_result['service::backup::enable']) {
+				config::save('service::backup::enable', $_result['service::backup::enable']);
+			}
+			if (isset($_result['register::id']) && config::byKey('register::id') != $_result['register::id']) {
+				config::save('register::id', $_result['register::id']);
+			}
+			if (isset($_result['username']) && config::byKey('market::username') != $_result['username']) {
+				config::save('market::username', $_result['username']);
+			}
 			if ($restart_dns && config::byKey('market::allowDNS') == 1) {
 				network::dns_start();
 			}
-			if (config::byKey('market::allowDNS') == 1) {
-				if (isset($_result['jeedom::url']) && config::byKey('jeedom::url') != $_result['jeedom::url']) {
-					config::save('jeedom::url', $_result['jeedom::url']);
-				}
-			}
-			if (isset($_result['market::allowBeta']) && config::byKey('market::allowBeta') != $_result['market::allowBeta']) {
-				config::save('market::allowBeta', $_result['market::allowBeta']);
-			}
-			if (isset($_result['market::allowAllRepo']) && config::byKey('market::allowAllRepo') != $_result['market::allowAllRepo']) {
-				config::save('market::allowAllRepo', $_result['market::allowAllRepo']);
+			if (config::byKey('market::allowDNS') == 1 && isset($_result['jeedom::url']) && config::byKey('jeedom::url') != $_result['jeedom::url']) {
+				config::save('jeedom::url', $_result['jeedom::url']);
 			}
 			if (isset($_result['register::hwkey_nok']) && $_result['register::hwkey_nok'] == 1) {
 				config::save('jeedom::installKey', '');
 			}
-			config::save('market::lastCommunication', date('Y-m-d H:i:s'));
+			if (isset($_result['broadcast::id']) && isset($_result['broadcast::message']) && $_result['broadcast::id'] != '' && $_result['broadcast::message'] != '' && $_result['broadcast::id'] != config::byKey('market::boradcast::id')) {
+				config::save('market::boradcast::id', $_result['broadcast::id']);
+				message::add('Jeedom SAS', $_result['broadcast::message']);
+			}
 		}
 	}
 	/**
 	 *
 	 * @param array $_arrayMarket
-	 * @return \self
+	 * @return self|null
 	 */
 	public static function construct(array $_arrayMarket) {
 		$market = new self();
@@ -600,6 +773,9 @@ class repo_market {
 		}
 		if (isset($_arrayMarket['allowVersion'])) {
 			$market->setAllowVersion($_arrayMarket['allowVersion']);
+		}
+		if (isset($_arrayMarket['nbInstall'])) {
+			$market->setNbInstall($_arrayMarket['nbInstall']);
 		}
 		$market->setPurchase($_arrayMarket['purchase'])
 			->setCost($_arrayMarket['cost']);
@@ -777,19 +953,20 @@ class repo_market {
 			exec(system::getCmdSudo() . 'chmod 777 -R ' . $tmp);
 		}
 		if (!is_writable($tmp_dir)) {
-			throw new Exception(__('Impossible d\'écrire dans le répertoire : ', __FILE__) . $tmp . __('. Exécuter la commande suivante en SSH : sudo chmod 777 -R ', __FILE__) . $tmp_dir);
+			throw new Exception(__('Impossible d\'écrire dans le répertoire :', __FILE__) . ' ' . $tmp . __('. Exécuter la commande suivante en SSH : sudo chmod 777 -R', __FILE__) . ' ' . $tmp_dir);
 		}
 
-		$url = config::byKey('market::address') . "/core/php/downloadFile.php?id=" . $this->getId() . '&version=' . $_version . '&jeedomversion=' . jeedom::version() . '&hwkey=' . jeedom::getHardwareKey() . '&username=' . urlencode(config::byKey('market::username')) . '&password=' . self::getPassword() . '&password_type=sha1';
-		log::add('update', 'alert', __('Téléchargement de ', __FILE__) . $this->getLogicalId() . '...');
-		$opts = array(
-			"ssl" => array(
-				"verify_peer" => false,
-				"verify_peer_name" => false,
-			),
-		);
-		file_put_contents($tmp, fopen($url, 'r', false, stream_context_create($opts)));
-
+		$url = config::byKey('market::address') . "/core/php/downloadFile.php?id=" . $this->getId();
+		$url .='&version=' . $_version ;
+		$url .='&jeedomversion=' . jeedom::version();
+		$url .='&osversion=' . system::getOsVersion();
+		$url .='&hwkey=' . jeedom::getHardwareKey();
+		$url .='&username=' . urlencode(config::byKey('market::username'));
+		$url .='&password=' . self::getPassword();
+		$url .='&password_type=sha1';
+		log::add('update', 'alert', __('Téléchargement de', __FILE__) . ' ' . $this->getLogicalId() . '...');
+		log::add('update', 'alert', __('URL', __FILE__) . ' ' . $url);
+		exec('wget "' . $url . '" -O ' . $tmp . ' >> ' . log::getPathToLog('update') . ' 2>&1');
 		switch ($this->getType()) {
 			case 'plugin':
 				return $tmp;
@@ -842,23 +1019,19 @@ class repo_market {
 					rrmdir($cibDir);
 				}
 				mkdir($cibDir);
-				$exclude = array(
-					'tmp',
-					'.git',
-					'.DStore',
-				);
+				$exclude = array('tmp', '.git', '.DStore');
 				if (property_exists($plugin_id, '_excludeOnSendPlugin')) {
 					$exclude = array_merge($plugin_id::$_excludeOnSendPlugin);
 				}
-				exec('find ' . realpath(dirname(__FILE__) . '/../../plugins/' . $plugin_id) . ' -name "*.sh" -type f -exec dos2unix {} \;');
-				rcopy(realpath(dirname(__FILE__) . '/../../plugins/' . $plugin_id), $cibDir, true, $exclude, true);
+				exec('find ' . realpath(__DIR__ . '/../../plugins/' . $plugin_id) . ' -name "*.sh" -type f -exec dos2unix {} \;');
+				rcopy(realpath(__DIR__ . '/../../plugins/' . $plugin_id), $cibDir, true, $exclude, true);
 				if (file_exists($cibDir . '/data')) {
 					rrmdir($cibDir . '/data');
 				}
 				$tmp = jeedom::getTmpFolder('market') . '/' . $plugin_id . '.zip';
 				if (file_exists($tmp)) {
 					if (!unlink($tmp)) {
-						throw new Exception(__('Impossible de supprimer : ', __FILE__) . $tmp . __('. Vérifiez les droits', __FILE__));
+						throw new Exception(__('Impossible de supprimer :', __FILE__) . ' ' . $tmp . __('. Vérifiez les droits', __FILE__));
 					}
 				}
 				if (!create_zip($cibDir, $tmp)) {
@@ -869,13 +1042,13 @@ class repo_market {
 			default:
 				$type = $this->getType();
 				if (!class_exists($type) || !method_exists($type, 'shareOnMarket')) {
-					throw new Exception(__('Aucune fonction correspondante à : ', __FILE__) . $type . '::shareOnMarket');
+					throw new Exception(__('Aucune fonction correspondante à :', __FILE__) . ' ' . $type . '::shareOnMarket');
 				}
 				$tmp = $type::shareOnMarket($this);
 				break;
 		}
 		if (!file_exists($tmp)) {
-			throw new Exception(__('Impossible de trouver le fichier à envoyer : ', __FILE__) . $tmp);
+			throw new Exception(__('Impossible de trouver le fichier à envoyer :', __FILE__) . ' ' . $tmp);
 		}
 		$file = array(
 			'file' => '@' . realpath($tmp),
@@ -892,7 +1065,7 @@ class repo_market {
 		}
 		if ($update->getSource() == 'market') {
 			$update->setConfiguration('version', 'beta');
-			$update->setLocalVersion(date('Y-m-d H:i:s', strtotime('+10 minute' . date('Y-m-d H:i:s'))));
+			$update->setLocalVersion(date('Y-m-d H:i:s',(int) strtotime('+10 minute' . date('Y-m-d H:i:s'))));
 			$update->save();
 		}
 		$update->checkUpdate();
@@ -1030,6 +1203,15 @@ class repo_market {
 		return $this;
 	}
 
+	public function getNbInstall() {
+		return $this->nbInstall;
+	}
+
+	public function setNbInstall($nbInstall) {
+		$this->nbInstall = $nbInstall;
+		return $this;
+	}
+
 	public function getLogicalId() {
 		return $this->logicalId;
 	}
@@ -1155,5 +1337,4 @@ class repo_market {
 		$this->parameters = utils::setJsonAttr($this->parameters, $_key, $_value);
 		return $this;
 	}
-
 }

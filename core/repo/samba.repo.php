@@ -1,24 +1,24 @@
 <?php
 
 /* This file is part of Jeedom.
- *
- * Jeedom is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * Jeedom is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with Jeedom. If not, see <http://www.gnu.org/licenses/>.
- */
+*
+* Jeedom is free software: you can redistribute it and/or modify
+* it under the terms of the GNU General Public License as published by
+* the Free Software Foundation, either version 3 of the License, or
+* (at your option) any later version.
+*
+* Jeedom is distributed in the hope that it will be useful,
+* but WITHOUT ANY WARRANTY; without even the implied warranty of
+* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+* GNU General Public License for more details.
+*
+* You should have received a copy of the GNU General Public License
+* along with Jeedom. If not, see <http://www.gnu.org/licenses/>.
+*/
 
 /* * ***************************Includes********************************* */
 
-require_once dirname(__FILE__) . '/../../core/php/core.inc.php';
+require_once __DIR__ . '/../../core/php/core.inc.php';
 
 class repo_samba {
 	/*     * *************************Attributs****************************** */
@@ -30,40 +30,45 @@ class repo_samba {
 		'backup' => true,
 		'hasConfiguration' => true,
 		'core' => true,
-	);
-
-	public static $_configuration = array(
-		'parameters_for_add' => array(
-			'path' => array(
-				'name' => 'Chemin',
-				'type' => 'input',
-			),
-		),
-		'configuration' => array(
-			'backup::ip' => array(
-				'name' => '[Backup] IP',
-				'type' => 'input',
-			),
-			'backup::username' => array(
-				'name' => '[Backup] Utilisateur',
-				'type' => 'input',
-			),
-			'backup::password' => array(
-				'name' => '[Backup] Mot de passe',
-				'type' => 'password',
-			),
-			'backup::share' => array(
-				'name' => '[Backup] Partage',
-				'type' => 'input',
-			),
-			'backup::folder' => array(
-				'name' => '[Backup] Chemin',
-				'type' => 'input',
-			),
-		),
+		'hasRetentionDay' => true,
+		'test' => true
 	);
 
 	/*     * ***********************Méthodes statiques*************************** */
+
+	public static function getConfigurationOption() {
+		return array(
+			'parameters_for_add' => array(
+				'path' => array(
+					'name' => __('Chemin', __FILE__),
+					'type' => 'input',
+				),
+			),
+			'configuration' => array(
+				'backup::ip' => array(
+					'name' => __('[Backup] IP', __FILE__),
+					'type' => 'input',
+				),
+				'backup::username' => array(
+					'name' => __('[Backup] Utilisateur', __FILE__),
+					'type' => 'input',
+				),
+				'backup::password' => array(
+					'name' => __('[Backup] Mot de passe', __FILE__),
+					'type' => 'password',
+				),
+				'backup::share' => array(
+					'name' => __('[Backup] Partage', __FILE__),
+					'type' => 'input',
+				),
+				'backup::folder' => array(
+					'name' => __('[Backup] Chemin', __FILE__),
+					'type' => 'input',
+				),
+			),
+		);
+	}
+
 
 	public static function checkUpdate(&$_update) {
 		if (is_array($_update)) {
@@ -92,7 +97,6 @@ class repo_samba {
 	}
 
 	public static function deleteObjet($_update) {
-
 	}
 
 	public static function downloadObject($_update) {
@@ -105,7 +109,7 @@ class repo_samba {
 			exec(system::getCmdSudo() . 'chmod 777 -R ' . $tmp);
 		}
 		if (!is_writable($tmp_dir)) {
-			throw new Exception(__('Impossible d\'écrire dans le répertoire : ', __FILE__) . $tmp . __('. Exécuter la commande suivante en SSH : sudo chmod 777 -R ', __FILE__) . $tmp_dir);
+			throw new Exception(__('Impossible d\'écrire dans le répertoire :', __FILE__) . ' ' . $tmp . __('. Exécuter la commande suivante en SSH : sudo chmod 777 -R', __FILE__) . ' ' . $tmp_dir);
 		}
 		$cmd = 'cd ' . $tmp_dir . ';';
 		$cmd .= self::makeSambaCommand('cd ' . config::byKey('samba::plugin::folder') . ';get ' . $_update->getConfiguration('path'), 'plugin');
@@ -127,7 +131,7 @@ class repo_samba {
 	}
 
 	public static function makeSambaCommand($_cmd, $_type = 'backup') {
-		return system::getCmdSudo() . 'smbclient ' . config::byKey('samba::' . $_type . '::share') . ' -U "' . config::byKey('samba::' . $_type . '::username') . '%' . config::byKey('samba::' . $_type . '::password') . '" -I ' . config::byKey('samba::' . $_type . '::ip') . ' -c "' . $_cmd . '"';
+		return system::getCmdSudo() . 'smbclient  -t 120 ' . config::byKey('samba::' . $_type . '::share') . ' -U "' . config::byKey('samba::' . $_type . '::username') . '%' . config::byKey('samba::' . $_type . '::password') . '" -I ' . config::byKey('samba::' . $_type . '::ip') . ' -c "' . $_cmd . '"';
 	}
 
 	public static function sortByDatetime($a, $b) {
@@ -152,24 +156,38 @@ class repo_samba {
 			$file_info = array();
 			$file_info['filename'] = $line[0];
 			$file_info['size'] = $line[2];
-			$file_info['datetime'] = date('Y-m-d H:i:s', strtotime($line[5] . ' ' . $line[4] . ' ' . $line[7] . ' ' . $line[6]));
+			$file_info['datetime'] = date('Y-m-d H:i:s', (int) strtotime($line[5] . ' ' . $line[4] . ' ' . $line[7] . ' ' . $line[6]));
 			$return[] = $file_info;
 		}
 		usort($return, 'repo_samba::sortByDatetime');
 		return array_reverse($return);
 	}
 
+	public static function test() {
+		$cmd = repo_samba::makeSambaCommand('cd ' . config::byKey('samba::backup::folder') . ';ls', 'backup');
+		try {
+			$result = explode("\n", com_shell::execute($cmd));
+			return True;
+		} catch (Exception $e) {
+			throw new Exception($e->getMessage());
+		}
+	}
+
 	public static function cleanBackupFolder() {
-		$timelimit = strtotime('-' . config::byKey('backup::keepDays') . ' days');
+		$timelimit = strtotime('-' . config::byKey('samba::keepDays') . ' days');
 		foreach (self::ls(config::byKey('samba::backup::folder')) as $file) {
+			if ($file['filename'] == '..' || $file['filename'] == '.') {
+				continue;
+			}
 			if ($timelimit > strtotime($file['datetime'])) {
+				echo 'Delete backup too old : ' . json_encode($file);
 				$cmd = self::makeSambaCommand('cd ' . config::byKey('samba::backup::folder') . ';del ' . $file['filename']);
 				com_shell::execute($cmd);
 			}
 		}
 	}
 
-	public static function sendBackup($_path) {
+	public static function backup_send($_path) {
 		$pathinfo = pathinfo($_path);
 		$cmd = 'cd ' . $pathinfo['dirname'] . ';';
 		$cmd .= self::makeSambaCommand('cd ' . config::byKey('samba::backup::folder') . ';put ' . $pathinfo['basename']);
@@ -177,21 +195,22 @@ class repo_samba {
 		self::cleanBackupFolder();
 	}
 
-	public static function listeBackup() {
+	public static function backup_list() {
 		$return = array();
 		foreach (self::ls(config::byKey('samba::backup::folder')) as $file) {
-			$return[] = $file['filename'];
+			if (strpos($file['filename'], '.tar.gz') !== false) {
+				$return[] = $file['filename'];
+			}
 		}
 		return $return;
 	}
 
-	public static function retoreBackup($_backup) {
+	public static function backup_restore($_backup) {
 		$backup_dir = calculPath(config::byKey('backup::path'));
 		$cmd = 'cd ' . $backup_dir . ';';
 		$cmd .= self::makeSambaCommand('cd ' . config::byKey('samba::backup::folder') . ';get ' . $_backup);
 		com_shell::execute($cmd);
 		com_shell::execute(system::getCmdSudo() . 'chmod 777 -R ' . $backup_dir . '/*');
-		jeedom::restore('backup/' . $_backup, true);
 	}
 
 	public static function downloadCore($_path) {
@@ -218,9 +237,7 @@ class repo_samba {
 			com_shell::execute(system::getCmdSudo() . 'rm ' . jeedom::getTmpFolder('samba') . '/version');
 			return $version;
 		} catch (Exception $e) {
-
 		} catch (Error $e) {
-
 		}
 		return null;
 	}
@@ -228,5 +245,4 @@ class repo_samba {
 	/*     * *********************Methode d'instance************************* */
 
 	/*     * **********************Getteur Setteur*************************** */
-
 }

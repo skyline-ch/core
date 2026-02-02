@@ -1,23 +1,23 @@
 <?php
 
 /* This file is part of Jeedom.
- *
- * Jeedom is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * Jeedom is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with Jeedom. If not, see <http://www.gnu.org/licenses/>.
- */
+*
+* Jeedom is free software: you can redistribute it and/or modify
+* it under the terms of the GNU General Public License as published by
+* the Free Software Foundation, either version 3 of the License, or
+* (at your option) any later version.
+*
+* Jeedom is distributed in the hope that it will be useful,
+* but WITHOUT ANY WARRANTY; without even the implied warranty of
+* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+* GNU General Public License for more details.
+*
+* You should have received a copy of the GNU General Public License
+* along with Jeedom. If not, see <http://www.gnu.org/licenses/>.
+*/
 
 /* * ***************************Includes********************************* */
-require_once dirname(__FILE__) . '/../../core/php/core.inc.php';
+require_once __DIR__ . '/../../core/php/core.inc.php';
 
 class scenario {
 	/*     * *************************Attributs****************************** */
@@ -33,18 +33,21 @@ class scenario {
 	private $_log;
 	private $timeout = 0;
 	private $object_id = null;
-	private $isVisible = 1;
+	private $isVisible = 0;
 	private $display;
+	private $order = 9999;
 	private $description;
 	private $configuration;
-	private $type = 'expert';
 	private static $_templateArray;
 	private $_elements = array();
 	private $_changeState = false;
 	private $_realTrigger = '';
+	private $_realTriggerValue = '';
+	/** @var bool */
 	private $_return = true;
-	private $_tags = array();
+	private $_tags = array('#trigger#' => '','#trigger_name#' => '','#trigger_id#' => '','#trigger_message#' => '','#trigger_value#' => '');
 	private $_do = true;
+	private $_changed = false;
 
 	/*     * ***********************Méthodes statiques*************************** */
 
@@ -66,50 +69,51 @@ class scenario {
 	public static function byString($_string) {
 		$scenario = self::byId(str_replace('#scenario', '', self::fromHumanReadable($_string)));
 		if (!is_object($scenario)) {
-			throw new Exception(__('La commande n\'a pas pu être trouvée : ', __FILE__) . $_string . __(' => ', __FILE__) . self::fromHumanReadable($_string));
+			throw new Exception($GLOBALS['JEEDOM_SCLOG_TEXT']['unfoundCmd']['txt'] . ' : ' . $_string . ' => ' . self::fromHumanReadable($_string));
 		}
 		return $scenario;
 	}
 
 	/**
 	 * Renvoie tous les objets scenario
-	 * @return [] scenario object scenario
+	 * @return scenario[]
 	 */
-	public static function all($_group = '', $_type = null) {
+	public static function all($_group = '') {
 		$values = array();
 		if ($_group === '') {
 			$sql = 'SELECT ' . DB::buildField(__CLASS__, 's') . '
 			FROM scenario s
-			INNER JOIN object ob ON s.object_id=ob.id';
-			if ($_type !== null) {
-				$values['type'] = $_type;
-				$sql .= ' WHERE `type`=:type';
-			}
-			$sql .= ' ORDER BY ob.name,s.group, s.name';
+			INNER JOIN object ob ON s.object_id=ob.id
+			ORDER BY ob.name, s.group, s.name';
 			$result1 = DB::Prepare($sql, $values, DB::FETCH_TYPE_ALL, PDO::FETCH_CLASS, __CLASS__);
 			if (!is_array($result1)) {
 				$result1 = array();
 			}
 			$sql = 'SELECT ' . DB::buildField(__CLASS__, 's') . '
 			FROM scenario s
-			WHERE s.object_id IS NULL';
-			if ($_type !== null) {
-				$values['type'] = $_type;
-				$sql .= ' AND `type`=:type';
-			}
-			$sql .= ' ORDER BY s.group, s.name';
+			WHERE s.object_id IS NULL
+			ORDER BY s.group, s.name';
 			$result2 = DB::Prepare($sql, $values, DB::FETCH_TYPE_ALL, PDO::FETCH_CLASS, __CLASS__);
-			return array_merge($result1, $result2);
+			if (!is_array($result2)) {
+				$result2 = array();
+			}
+			$sql = 'SELECT ' . DB::buildField(__CLASS__, 's') . '
+			FROM scenario s
+            		LEFT JOIN object ob ON s.object_id=ob.id
+			WHERE ob.id IS NULL
+   			AND s.object_id IS NOT NULL
+			ORDER BY s.group, s.name';
+			$result3 = DB::Prepare($sql, $values, DB::FETCH_TYPE_ALL, PDO::FETCH_CLASS, __CLASS__);
+			if (!is_array($result3)) {
+				$result3 = array();
+			}
+			return array_merge($result1, $result2,$result3);
 		} elseif ($_group === null) {
 			$sql = 'SELECT ' . DB::buildField(__CLASS__, 's') . '
 			FROM scenario s
 			INNER JOIN object ob ON s.object_id=ob.id
-			WHERE (`group` IS NULL OR `group` = "")';
-			if ($_type !== null) {
-				$values['type'] = $_type;
-				$sql .= ' AND `type`=:type';
-			}
-			$sql .= ' ORDER BY s.group, s.name';
+			WHERE (`group` IS NULL OR `group` = "")
+			ORDER BY s.group, s.name';
 			$result1 = DB::Prepare($sql, $values, DB::FETCH_TYPE_ALL, PDO::FETCH_CLASS, __CLASS__);
 			if (!is_array($result1)) {
 				$result1 = array();
@@ -117,14 +121,24 @@ class scenario {
 			$sql = 'SELECT ' . DB::buildField(__CLASS__, 's') . '
 			FROM scenario s
 			WHERE (`group` IS NULL OR `group` = "")
-			AND s.object_id IS NULL';
-			if ($_type !== null) {
-				$values['type'] = $_type;
-				$sql .= ' AND `type`=:type';
-			}
-			$sql .= ' ORDER BY  s.name';
+			AND s.object_id IS NULL
+			ORDER BY  s.name';
 			$result2 = DB::Prepare($sql, $values, DB::FETCH_TYPE_ALL, PDO::FETCH_CLASS, __CLASS__);
-			return array_merge($result1, $result2);
+			if (!is_array($result2)) {
+				$result2 = array();
+			}
+			$sql = 'SELECT ' . DB::buildField(__CLASS__, 's') . '
+			FROM scenario s
+            		LEFT JOIN object ob ON s.object_id=ob.id
+			WHERE (`group` IS NULL OR `group` = "")
+			AND ob.id IS NULL
+   			AND s.object_id IS NOT NULL
+			ORDER BY s.group, s.name';
+			$result3 = DB::Prepare($sql, $values, DB::FETCH_TYPE_ALL, PDO::FETCH_CLASS, __CLASS__);
+			if (!is_array($result3)) {
+				$result3 = array();
+			}
+			return array_merge($result1, $result2,$result3);
 		} else {
 			$values = array(
 				'group' => $_group,
@@ -132,41 +146,95 @@ class scenario {
 			$sql = 'SELECT ' . DB::buildField(__CLASS__, 's') . '
 			FROM scenario s
 			INNER JOIN object ob ON s.object_id=ob.id
-			WHERE `group`=:group';
-			if ($_type !== null) {
-				$values['type'] = $_type;
-				$sql .= ' AND `type`=:type';
-			}
-			$sql .= ' ORDER BY ob.name,s.group, s.name';
+			WHERE `group`=:group
+			ORDER BY ob.name,s.group, s.name';
 			$result1 = DB::Prepare($sql, $values, DB::FETCH_TYPE_ALL, PDO::FETCH_CLASS, __CLASS__);
 			$sql = 'SELECT ' . DB::buildField(__CLASS__, 's') . '
 			FROM scenario s
 			WHERE `group`=:group
-			AND s.object_id IS NULL';
-			if ($_type !== null) {
-				$values['type'] = $_type;
-				$sql .= ' AND `type`=:type';
-			}
-			$sql .= ' ORDER BY s.group, s.name';
+			AND s.object_id IS NULL
+			ORDER BY s.group, s.name';
 			$result2 = DB::Prepare($sql, $values, DB::FETCH_TYPE_ALL, PDO::FETCH_CLASS, __CLASS__);
-			return array_merge($result1, $result2);
+			if (!is_array($result2)) {
+				$result2 = array();
+			}
+			$sql = 'SELECT ' . DB::buildField(__CLASS__, 's') . '
+			FROM scenario s
+            		LEFT JOIN object ob ON s.object_id=ob.id
+			WHERE `group`=:group
+			AND ob.id IS NULL
+   			AND s.object_id IS NOT NULL
+			ORDER BY s.group, s.name';
+			$result3 = DB::Prepare($sql, $values, DB::FETCH_TYPE_ALL, PDO::FETCH_CLASS, __CLASS__);
+			if (!is_array($result3)) {
+				$result3 = array();
+			}
+			return array_merge($result1, $result2,$result3);
 		}
 	}
 	/**
+	 * return all scenarios ordered by [group][objectName][scenarioName]
+	 * @return scenario[]
+	 */
+	public static function allOrderedByGroupObjectName($_asGroup = false) {
+		$scenarioList = array();
+		$scenarios = array();
+
+		$scenarios[-1] = scenario::all(null);
+		$scenarioListGroup = scenario::listGroup();
+		if (is_array($scenarioListGroup)) {
+			foreach ($scenarioListGroup as $group) {
+				$scenarios[$group['group']] = scenario::all($group['group']);
+			}
+		}
+
+		if (count($scenarios[-1]) > 0) {
+			foreach ($scenarios[-1] as $scenario) {
+				array_push($scenarioList, $scenario);
+			}
+		}
+
+		foreach ($scenarioListGroup as $group) {
+			if ($group['group'] == '') continue;
+			foreach ($scenarios[$group['group']] as $scenario) {
+				array_push($scenarioList, $scenario);
+			}
+		}
+
+		if ($_asGroup) {
+			$scenarioGroupedList = array();
+			foreach ($scenarioListGroup as $group) {
+				$groupName = $group['group'];
+				if ($groupName == '') $groupName = __('Aucun', __FILE__);
+				$scenarioGroupedList[$groupName] = array();
+				foreach ($scenarioList as $scenario) {
+					$scGroup = $scenario->getGroup();
+					if ($scGroup == '') $scGroup = __('Aucun', __FILE__);
+					if ($scGroup != $groupName) continue;
+					array_push($scenarioGroupedList[$groupName], $scenario);
+				}
+			}
+			return $scenarioGroupedList;
+		}
+		return $scenarioList;
+	}
+	/**
 	 *
-	 * @return type
+	 * @return scenario[]
 	 */
 	public static function schedule() {
 		$sql = 'SELECT ' . DB::buildField(__CLASS__) . '
 		FROM scenario
 		WHERE `mode` != "provoke"
+		AND `mode` != ""
+		AND `schedule` != ""
 		AND isActive=1';
 		return DB::Prepare($sql, array(), DB::FETCH_TYPE_ALL, PDO::FETCH_CLASS, __CLASS__);
 	}
 	/**
 	 *
-	 * @param type $_group
-	 * @return type
+	 * @param string $_group
+	 * @return scenario[]
 	 */
 	public static function listGroup($_group = null) {
 		$values = array();
@@ -181,8 +249,9 @@ class scenario {
 	}
 	/**
 	 *
-	 * @param type $_cmd_id
-	 * @return type
+	 * @param string $_cmd_id
+	 * @param bool $_onlyEnable
+	 * @return scenario[]
 	 */
 	public static function byTrigger($_cmd_id, $_onlyEnable = true) {
 		$values = array(
@@ -199,8 +268,31 @@ class scenario {
 	}
 	/**
 	 *
-	 * @param type $_element_id
-	 * @return type
+	 * @param string $_generic
+	 * @param object $_object
+	 * @param bool $_onlyEnable
+	 * @return scenario[]
+	 */
+	public static function byGenericTrigger($_generic, $_object, $_onlyEnable = true) {
+		$values = array('trigger' => '%genericType(' . $_generic . ')%');
+		$sql = 'SELECT ' . DB::buildField(__CLASS__) . '
+		FROM scenario
+		WHERE mode != "schedule"
+		AND `trigger` LIKE :trigger';
+
+		if (is_object($_object)) {
+			$values['triggerObject'] = '%genericType(' . $_generic . ',#object' . $_object->getId() . '#)%';
+			$sql .= ' OR `trigger` LIKE :triggerObject';
+		}
+		if ($_onlyEnable) {
+			$sql .= ' AND isActive=1';
+		}
+		return DB::Prepare($sql, $values, DB::FETCH_TYPE_ALL, PDO::FETCH_CLASS, __CLASS__);
+	}
+	/**
+	 *
+	 * @param string $_element_id
+	 * @return scenario
 	 */
 	public static function byElement($_element_id) {
 		$values = array(
@@ -213,10 +305,10 @@ class scenario {
 	}
 	/**
 	 *
-	 * @param type $_object_id
-	 * @param type $_onlyEnable
-	 * @param type $_onlyVisible
-	 * @return type
+	 * @param null|int $_object_id
+	 * @param bool $_onlyEnable
+	 * @param bool $_onlyVisible
+	 * @return scenario[]
 	 */
 	public static function byObjectId($_object_id, $_onlyEnable = true, $_onlyVisible = false) {
 		$values = array();
@@ -234,27 +326,70 @@ class scenario {
 		if ($_onlyVisible) {
 			$sql .= ' AND isVisible = 1';
 		}
+		$sql .= ' ORDER BY `order`';
 		return DB::Prepare($sql, $values, DB::FETCH_TYPE_ALL, PDO::FETCH_CLASS, __CLASS__);
 	}
 	/**
 	 *
-	 * @param type $_event
-	 * @param type $_forceSyncMode
-	 * @return boolean
+	 * @param null|object|string $_event
+	 * @param bool $_forceSyncMode
+	 * @param null|string $_generic
+	 * @param null|object $_object
+	 * @param null|string $_value
+	 * @return void|true
 	 */
-	public static function check($_event = null, $_forceSyncMode = false) {
-		$message = '';
+	public static function check($_event = null, $_forceSyncMode = false, $_generic = null, $_object = null, $_value = null, $_options = null) {
+		if (config::byKey('enableScenario') != 1) {
+			return;
+		}
+		$datetime = date('Y-m-d H:i:s');
+		$trigger_message = '';
 		if ($_event !== null) {
+			//check from a cmd event:
 			$scenarios = array();
 			if (is_object($_event)) {
 				$scenarios1 = self::byTrigger($_event->getId());
 				$trigger = '#' . $_event->getId() . '#';
-				$message = __('Scénario exécuté automatiquement sur événement venant de : ', __FILE__) . $_event->getHumanName();
+				$trigger_message = $GLOBALS['JEEDOM_SCLOG_TEXT']['startAutoOnEvent']['txt'] . $_event->getHumanName();
+				if ($_value !== null) {
+					$trigger_message .= ' (' . $_value . ')';
+				}
 			} else {
 				$scenarios1 = self::byTrigger($_event);
 				$trigger = $_event;
-				$message = __('Scénario exécuté sur événement : #', __FILE__) . $_event . '#';
+				$trigger_message = $GLOBALS['JEEDOM_SCLOG_TEXT']['startOnEvent']['txt'] . ' : #' . $_event . '#';
+				if ($_value !== null) {
+					$trigger_message .= ' (' . $_value . ')';
+				}
 			}
+
+			//cmd generic trigger:
+			if ($_generic) {
+				$scenarios2 = self::byGenericTrigger($_generic, $_object, true);
+				if (is_array($scenarios2) && count($scenarios2) > 0) {
+					foreach ($scenarios2 as $scenario) {
+						if ($scenario->testTrigger($trigger)) {
+							$trigger_message = $GLOBALS['JEEDOM_SCLOG_TEXT']['startAutoOnEvent']['txt'];
+							if (is_object($_object)) {
+								$trigger_message .= ' genericType(' . $_generic . ',#[' . $_object->getName() . ']#) from ' . $_event->getHumanName();
+							} else {
+								$trigger_message .= ' genericType(' . $_generic . ')' . ' from ' . $_event->getHumanName();
+							}
+							$scenario->addTag('trigger_message',$trigger_message);
+							$scenario->addTag('trigger_value',$_value);
+							if (is_object($_event)) {
+								$scenario->addTag('trigger_name',trim($_event->getHumanName(),'#'));
+								$scenario->addTag('trigger_id',$_event->getId());
+								$scenario->addTag('trigger',get_class($_event));
+							}else{
+								$scenario->addTag('trigger',trim($_event,'#'));
+							}
+							$scenario->launch($_forceSyncMode);
+						}
+					}
+				}
+			}
+
 			if (is_array($scenarios1) && count($scenarios1) > 0) {
 				foreach ($scenarios1 as $scenario) {
 					if ($scenario->testTrigger($trigger)) {
@@ -263,31 +398,45 @@ class scenario {
 				}
 			}
 		} else {
-			$message = __('Scénario exécuté automatiquement sur programmation', __FILE__);
+			$trigger_message = $GLOBALS['JEEDOM_SCLOG_TEXT']['startAutoOnShedule']['txt'];
 			$scenarios = scenario::schedule();
-			$trigger = 'schedule';
+			$_event = 'schedule';
 			if (jeedom::isDateOk()) {
 				foreach ($scenarios as $key => &$scenario) {
-					if ($scenario->getState() != 'in progress') {
-						if (!$scenario->isDue()) {
-							unset($scenarios[$key]);
-						}
-					} else {
+					if ($scenario->getState() == 'in progress' && $scenario->getConfiguration('allowMultiInstance', 0) == 0) {
+						unset($scenarios[$key]);
+					} else if (!$scenario->isDue($datetime)) {
 						unset($scenarios[$key]);
 					}
 				}
 			}
 		}
+
 		if (count($scenarios) > 0) {
 			foreach ($scenarios as $scenario_) {
-				$scenario_->launch($trigger, $message, $_forceSyncMode);
+				$scenario_->addTag('trigger_message',$trigger_message);
+				
+				$scenario_->addTag('trigger_value',$_value);
+				if (is_object($_event)) {
+					$scenario_->addTag('trigger_name',trim($_event->getHumanName(),'#'));
+					$scenario_->addTag('trigger_id',$_event->getId());
+					$scenario_->addTag('trigger',get_class($_event));
+				}else{
+					$scenario_->addTag('trigger',$_event);
+				}
+				if (is_array($_options) && count($_options) > 0) {
+					foreach ($_options as $key => $value) {
+						$scenario_->addTag($key,$value);
+					}
+				}
+				$scenario_->launch($_forceSyncMode);
 			}
 		}
 		return true;
 	}
 
 	public static function control() {
-		foreach (scenario::all() as $scenario) {
+		foreach ((scenario::all()) as $scenario) {
 			if ($scenario->getState() != 'in progress') {
 				continue;
 			}
@@ -298,8 +447,9 @@ class scenario {
 			$runtime = strtotime('now') - strtotime($scenario->getLastLaunch());
 			if (is_numeric($scenario->getTimeout()) && $scenario->getTimeout() != '' && $scenario->getTimeout() != 0 && $runtime > $scenario->getTimeout()) {
 				$scenario->stop();
-				$scenario->setLog(__('Arret du scénario car il a dépassé son temps de timeout : ', __FILE__) . $scenario->getTimeout() . 's');
+				$scenario->setLog($GLOBALS['JEEDOM_SCLOG_TEXT']['stopTimeout']['txt'] . $scenario->getTimeout() . 's');
 				$scenario->persistLog();
+				log::add('scenario', 'info', $scenario->getHumanName() . ' ' . $GLOBALS['JEEDOM_SCLOG_TEXT']['stopTimeout']['txt'] . $scenario->getTimeout() . 's');
 			}
 		}
 	}
@@ -307,32 +457,37 @@ class scenario {
 	/**
 	 *
 	 * @param array $_options
-	 * @return type
+	 * @return void
 	 */
 	public static function doIn($_options) {
+		if (config::byKey('enableScenario') != 1) {
+			return;
+		}
 		$scenario = self::byId($_options['scenario_id']);
 		if (!is_object($scenario)) {
 			return;
 		}
 		if ($scenario->getIsActive() == 0) {
-			$scenario->setLog(__('Scénario désactivé non lancement de la sous tâche', __FILE__));
+			$scenario->setLog($GLOBALS['JEEDOM_SCLOG_TEXT']['disableNoSubtask']['txt']);
 			$scenario->persistLog();
 			return;
 		}
 		$scenarioElement = scenarioElement::byId($_options['scenarioElement_id']);
-		$scenario->setLog(__('************Lancement sous tâche**************', __FILE__));
+		$scenario->setLog($GLOBALS['JEEDOM_SCLOG_TEXT']['startSubTask']['txt']);
 		if (isset($_options['tags']) && is_array($_options['tags']) && count($_options['tags']) > 0) {
 			$scenario->setTags($_options['tags']);
-			$scenario->setLog(__('Tags : ', __FILE__) . json_encode($scenario->getTags()));
+			$scenario->setLog(__('Tags :', __FILE__) . ' ' . json_encode($scenario->getTags(), JSON_UNESCAPED_UNICODE));
 		}
 		if (!is_object($scenarioElement) || !is_object($scenario)) {
+			$scenario->setLog($GLOBALS['JEEDOM_SCLOG_TEXT']['toStartUnfound']['txt']);
+			$scenario->persistLog();
 			return;
 		}
-		if (is_numeric($_options['second']) && $_options['second'] > 0) {
-			sleep($_options['second']);
+		if (is_numeric($_options['second']) && $_options['second'] > intval(date('s'))) {
+			sleep($_options['second'] - intval(date('s')));
 		}
 		$scenarioElement->getSubElement('do')->execute($scenario);
-		$scenario->setLog(__('************FIN sous tâche**************', __FILE__));
+		$scenario->setLog($GLOBALS['JEEDOM_SCLOG_TEXT']['endSubTask']['txt']);
 		$scenario->persistLog();
 	}
 	/**
@@ -344,8 +499,8 @@ class scenario {
 			'subelement' => array(),
 			'expression' => array(),
 		);
-		foreach (scenario::all() as $scenario) {
-			foreach ($scenario->getElement() as $element) {
+		foreach ((scenario::all()) as $scenario) {
+			foreach (($scenario->getElement()) as $element) {
 				$result = $element->getAllId();
 				$ids['element'] = array_merge($ids['element'], $result['element']);
 				$ids['subelement'] = array_merge($ids['subelement'], $result['subelement']);
@@ -374,14 +529,13 @@ class scenario {
 		$sql .= ')';
 		DB::Prepare($sql, array(), DB::FETCH_TYPE_ALL);
 	}
-	/**
-	 *
-	 */
+
 	public static function consystencyCheck($_needsReturn = false) {
 		$return = array();
-		foreach (self::all() as $scenario) {
+		$scenarios = self::all();
+		foreach ($scenarios as $scenario) {
 			if ($scenario->getGroup() == '') {
-				$group = 'aucun';
+				$group = __('Aucun', __FILE__);
 			} else {
 				$group = $scenario->getGroup();
 			}
@@ -390,42 +544,44 @@ class scenario {
 					continue;
 				}
 			}
+			//check scenario triggers:
 			if ($scenario->getMode() == 'provoke' || $scenario->getMode() == 'all') {
 				$trigger_list = '';
-				foreach ($scenario->getTrigger() as $trigger) {
-					$trigger_list .= cmd::cmdToHumanReadable($trigger);
+				foreach (($scenario->getTrigger()) as $trigger) {
+					$trigger_list .= cmd::cmdToHumanReadable($trigger) . '_';
 				}
 				preg_match_all("/#([0-9]*)#/", $trigger_list, $matches);
 				foreach ($matches[1] as $cmd_id) {
 					if (is_numeric($cmd_id)) {
 						if ($_needsReturn) {
-							$return[] = array('detail' => 'Scénario ' . $scenario->getName() . ' du groupe ' . $group, 'help' => 'Déclencheur du scénario', 'who' => '#' . $cmd_id . '#');
+							$return[] = array(
+								'detail' => '<a href="/index.php?v=d&p=scenario&id=' . $scenario->getId() . '">' . $scenario->getHumanName() . '</a>',
+								'help' => __('Déclencheur', __FILE__),
+								'who' => '#' . $cmd_id . '#'
+							);
 						} else {
-							log::add('scenario', 'error', __('Un déclencheur du scénario : ', __FILE__) . $scenario->getHumanName() . __(' est introuvable', __FILE__));
+							log::add('scenario', 'error', __('Un déclencheur du scénario :', __FILE__) . ' ' . $scenario->getHumanName() . ' ' . __('est introuvable', __FILE__));
 						}
 					}
 				}
 			}
+			//check scenario expressions:
 			$expression_list = '';
-			foreach ($scenario->getElement() as $element) {
-				foreach ($element->getSubElement() as $subElement) {
-					foreach ($subElement->getExpression() as $expression) {
-						$expression_list .= cmd::cmdToHumanReadable($expression->getExpression()) . ' _ ';
-						if (is_array($expression->getOptions())) {
-							foreach ($expression->getOptions() as $key => $value) {
-								$expression_list .= cmd::cmdToHumanReadable($value) . ' _ ';
-							}
-						}
-					}
-				}
+			$elements = $scenario->getElement();
+			foreach ($elements as $element) {
+				$expression_list .= cmd::cmdToHumanReadable(json_encode($element->getAjaxElement()));
 			}
 			preg_match_all("/#([0-9]*)#/", $expression_list, $matches);
 			foreach ($matches[1] as $cmd_id) {
 				if (is_numeric($cmd_id)) {
 					if ($_needsReturn) {
-						$return[] = array('detail' => 'Scénario ' . $scenario->getName() . ' du groupe ' . $group, 'help' => 'Utilisé dans le scénario', 'who' => '#' . $cmd_id . '#');
+						$return[] = array(
+							'detail' => '<a href="/index.php?v=d&p=scenario&id=' . $scenario->getId() . '">' . $scenario->getHumanName() . '</a>',
+							'help' => __('Expression', __FILE__),
+							'who' => '#' . $cmd_id . '#'
+						);
 					} else {
-						log::add('scenario', 'error', __('Une commande du scénario : ', __FILE__) . $scenario->getHumanName() . __(' est introuvable', __FILE__));
+						log::add('scenario', 'error', __('Une commande du scénario :', __FILE__) . ' ' . $scenario->getHumanName() . ' ' . __('est introuvable', __FILE__));
 					}
 				}
 			}
@@ -436,11 +592,10 @@ class scenario {
 	}
 
 	/**
-	 * @name byObjectNameGroupNameScenarioName()
-	 * @param object $_object_name
-	 * @param type $_group_name
-	 * @param type $_scenario_name
-	 * @return type
+	 * @param string $_object_name
+	 * @param string $_group_name
+	 * @param string $_scenario_name
+	 * @return scenario
 	 */
 	public static function byObjectNameGroupNameScenarioName($_object_name, $_group_name, $_scenario_name) {
 		$values = array(
@@ -526,10 +681,13 @@ class scenario {
 	}
 	/**
 	 *
-	 * @param type $_input
-	 * @return type
+	 * @param string|object|array $_input
+	 * @return string|object|array return value will depends on $_input received
 	 */
 	public static function fromHumanReadable($_input) {
+		if(empty($_input)){
+			return $_input;
+		}
 		$isJson = false;
 		if (is_json($_input)) {
 			$isJson = true;
@@ -567,7 +725,7 @@ class scenario {
 			$countMatches = count($matches[0]);
 			for ($i = 0; $i < $countMatches; $i++) {
 				if (isset($matches[1][$i]) && isset($matches[2][$i]) && isset($matches[3][$i])) {
-					$scenario = self::byObjectNameGroupNameScenarioName($matches[1][$i], $matches[2][$i], $matches[3][$i]);
+					$scenario = self::byObjectNameGroupNameScenarioName($matches[2][$i], $matches[1][$i], $matches[3][$i]);
 					if (is_object($scenario)) {
 						$text = str_replace($matches[0][$i], '#scenario' . $scenario->getId() . '#', $text);
 					}
@@ -579,8 +737,8 @@ class scenario {
 	}
 	/**
 	 *
-	 * @param type $searchs
-	 * @return type
+	 * @param array $searchs
+	 * @return array
 	 */
 	public static function searchByUse($searchs) {
 		$return = array();
@@ -622,93 +780,49 @@ class scenario {
 	}
 	/**
 	 *
-	 * @param type $_template
-	 * @return type
+	 * @param string $_search
+	 * @param null|string $_options
+	 * @param bool $_and
+	 * @return scenario[]
 	 */
-	public static function getTemplate($_template = '') {
-		$path = dirname(__FILE__) . '/../config/scenario';
-		if (isset($_template) && $_template != '') {
-
-		}
-		return ls($path, '*.json', false, array('files', 'quiet'));
-	}
-
-	/*     * *************************MARKET**************************************** */
-
-	public static function shareOnMarket(&$market) {
-		$moduleFile = dirname(__FILE__) . '/../config/scenario/' . $market->getLogicalId() . '.json';
-		if (!file_exists($moduleFile)) {
-			throw new Exception('Impossible de trouver le fichier de configuration ' . $moduleFile);
-		}
-		$tmp = jeedom::getTmpFolder('market') . '/' . $market->getLogicalId() . '.zip';
-		if (file_exists($tmp)) {
-			if (!unlink($tmp)) {
-				throw new Exception(__('Impossible de supprimer : ', __FILE__) . $tmp . __('. Vérifiez les droits', __FILE__));
+	public static function searchByTrigger($_search, $_options = null, $_and = true) {
+		$values = array(
+			'search' => '%' . $_search . '%',
+		);
+		$sql = 'SELECT ' . DB::buildField(__CLASS__) . '
+		FROM ' . __CLASS__ . '
+		WHERE `trigger` LIKE :search';
+		if ($_options !== null) {
+			$values['options'] = '%' . $_options . '%';
+			if ($_and) {
+				$sql .= ' AND options LIKE :options';
+			} else {
+				$sql .= ' OR options LIKE :options';
 			}
 		}
-		if (!create_zip($moduleFile, $tmp)) {
-			throw new Exception(__('Echec de création du zip. Répertoire source : ', __FILE__) . $moduleFile . __(' / Répertoire cible : ', __FILE__) . $tmp);
-		}
-		return $tmp;
-	}
-	/**
-	 *
-	 * @param type $market
-	 * @param type $_path
-	 * @throws Exception
-	 */
-	public static function getFromMarket(&$market, $_path) {
-		$cibDir = dirname(__FILE__) . '/../config/scenario/';
-		if (!file_exists($cibDir)) {
-			mkdir($cibDir);
-		}
-		$zip = new ZipArchive;
-		if ($zip->open($_path) === true) {
-			$zip->extractTo($cibDir . '/');
-			$zip->close();
-		} else {
-			throw new Exception('Impossible de décompresser l\'archive zip : ' . $_path);
-		}
+		return DB::Prepare($sql, $values, DB::FETCH_TYPE_ALL, PDO::FETCH_CLASS, __CLASS__);
 	}
 
-	public static function removeFromMarket(&$market) {
-		trigger_error('This method is deprecated', E_USER_DEPRECATED);
-	}
-
-	public static function listMarketObject() {
-		return array();
-	}
-
-	public static function timelineDisplay($_event) {
-		$return = array();
-		$return['date'] = $_event['datetime'];
-		$return['group'] = 'scenario';
-		$return['type'] = $_event['type'];
-		$scenario = scenario::byId($_event['id']);
-		if (!is_object($scenario)) {
-			return null;
-		}
-		$object = $scenario->getObject();
-		$return['object'] = is_object($object) ? $object->getId() : 'aucun';
-		$return['html'] = '<div class="scenario" data-id="' . $_event['id'] . '">'
-			. '<div style="background-color:#e7e7e7;padding:1px;font-size:0.9em;font-weight: bold;cursor:help;">' . $_event['name'] . ' <i class="fa fa-file-text-o pull-right cursor bt_scenarioLog"></i> <i class="fa fa-share pull-right cursor bt_gotoScenario"></i></div>'
-			. '<div style="background-color:white;padding:1px;font-size:0.8em;cursor:default;">Déclenché par ' . $_event['trigger'] . '<div/>'
-			. '</div>';
-		return $return;
+	public static function getTemplate() {
+		$path = __DIR__ . '/../../data/scenario';
+		return ls($path, '*.json', false, array('files', 'quiet'));
 	}
 
 	/*     * *********************Méthodes d'instance************************* */
 	/**
 	 *
-	 * @param type $_event
+	 * @param string $_event
 	 * @return boolean
 	 */
 	public function testTrigger($_event) {
-		foreach ($this->getTrigger() as $trigger) {
+		foreach (($this->getTrigger()) as $trigger) {
 			$trigger = str_replace(array('#variable(', ')#'), array('variable(', ')'), $trigger);
+			$trigger = str_replace(array('#genericType(', ')#'), array('genericType(', ')'), $trigger);
 			if ($trigger == $_event) {
 				return true;
 			} elseif (strpos($trigger, $_event) !== false && jeedom::evaluateExpression($trigger)) {
+				return true;
+			} elseif (strpos($trigger, 'genericType') !== false && jeedom::evaluateExpression($trigger) !== false) {
 				return true;
 			}
 		}
@@ -716,26 +830,55 @@ class scenario {
 	}
 	/**
 	 *
-	 * @param type $_trigger
-	 * @param type $_message
-	 * @param type $_forceSyncMode
+	 * @param boolean $_forceSyncMode
 	 * @return boolean
 	 */
-	public function launch($_trigger = '', $_message = '', $_forceSyncMode = false) {
+	public function launch($_forceSyncMode = false) {
 		if (config::byKey('enableScenario') != 1 || $this->getIsActive() != 1) {
 			return false;
 		}
-		if ($this->getConfiguration('syncmode') == 1 || $_forceSyncMode) {
-			$this->setLog(__('Lancement du scénario en mode synchrone', __FILE__));
-			return $this->execute($_trigger, $_message);
-		} else {
-			if (count($this->getTags()) != '') {
-				$this->setCache('tags', $this->getTags());
+		$state = $this->getState();
+		if ($state == 'starting') {
+			//Scenario stuck into starting state. May be too much sql connections, refused connection, or scenario hangs.
+			if (strtotime('now') - $this->getCache('startingTime') > 5) {
+				log::add('scenario', 'error', __('La dernière exécution du scénario ne s\'est pas lancée. Vérifiez le log scenario_execution, ainsi que le log du scénario', __FILE__) . " \"" . $this->getName() . "\".");
+				$this->setLog(__('La dernière exécution du scénario ne s\'est pas lancée. Vérifiez le log scenario_execution pour l\'exécution à', __FILE__) . ' ' . date('Y-m-d H:i:s', $this->getCache('startingTime')) . ".");
+				$this->persistLog();
 			}
-			$cmd = dirname(__FILE__) . '/../../core/php/jeeScenario.php ';
+			//Delay scenario start if another instance ever starting.
+			if (($this->getCache('startingTime') + 2) > strtotime('now')) {
+				$i = 0;
+				while ($state == 'starting') {
+					sleep(1);
+					$state = $this->getState();
+					$i++;
+					if ($i > 10) {
+						break;
+					}
+				}
+				if ($state == 'starting') {
+					log::add('scenario', 'error', __('Trop d\'appels simultanés du scénario, il ne peut-être exécuté une nouvelle fois. Il est conseillé de réduire les appels au scénario', __FILE__) . " \"" . $this->getName() . "\".");
+					$this->setLog(__('Trop d\'appels simultanés du scénario, il ne peut-être exécuté une nouvelle fois. Il est conseillé de réduire les appels à ce scénario', __FILE__) . ".");
+					$this->persistLog();
+					return false;
+				}
+			}
+		}
+		if ($state == 'in progress' && $this->getConfiguration('allowMultiInstance', 0) == 0) {
+			return false;
+		}
+		$this->setCache(array('startingTime' => strtotime('now'), 'state' => 'starting'));
+		if ($this->getConfiguration('syncmode') == 1 || $_forceSyncMode) {
+			$this->setLog($GLOBALS['JEEDOM_SCLOG_TEXT']['launchScenarioSync']['txt']);
+			return $this->execute();
+		} else {
+			$instance_id = config::genKey(16);
+			cache::set('scenarioInstanceAttr'.$this->getId().'::'.$instance_id,array(
+				'tags' => $this->getTags()
+			));
+			$cmd = __DIR__ . '/../../core/php/jeeScenario.php ';
 			$cmd .= ' scenario_id=' . $this->getId();
-			$cmd .= ' trigger=' . escapeshellarg($_trigger);
-			$cmd .= ' "message=' . escapeshellarg(sanitizeAccent($_message)) . '"';
+			$cmd .= ' intance_id='.$instance_id;
 			$cmd .= ' >> ' . log::getPathToLog('scenario_execution') . ' 2>&1 &';
 			system::php($cmd);
 		}
@@ -743,48 +886,72 @@ class scenario {
 	}
 	/**
 	 *
-	 * @param type $_trigger
-	 * @param type $_message
-	 * @return type
+	 * @param string $instance_id
 	 */
-	public function execute($_trigger = '', $_message = '') {
-		if ($this->getCache('tags') != '') {
-			$this->setTags($this->getCache('tags'));
-			$this->setCache('tags', '');
+	public function execute($instance_id = '') {
+		if (config::byKey('enableScenario') != 1) {
+			return;
+		}
+		if($instance_id != ''){
+			$this->setTags(cache::byKey('scenarioInstanceAttr'.$this->getId().'::'.$instance_id)->getValue()['tags']);
+			cache::byKey('scenarioInstanceAttr'.$this->getId().'::'.$instance_id)->remove();
 		}
 		if ($this->getIsActive() != 1) {
-			$this->setLog(__('Impossible d\'exécuter le scénario : ', __FILE__) . $this->getHumanName() . __(' sur : ', __FILE__) . $_message . __(' car il est désactivé', __FILE__));
+			$this->setLog($GLOBALS['JEEDOM_SCLOG_TEXT']['disableScenario']['txt']  . $this->getHumanName() . ' ' . __('sur :', __FILE__) . ' ' . $this->getTag('message') . ' ' . __('car il est désactivé', __FILE__));
+			$this->setState('stop');
+			$this->setPID();
 			$this->persistLog();
 			return;
 		}
-		if ($this->getConfiguration('timeDependency', 0) == 1 && !jeedom::isDateOk()) {
-			$this->setLog(__('Lancement du scénario : ', __FILE__) . $this->getHumanName() . __(' annulé car il utilise une condition de type temporelle et que la date système n\'est pas OK', __FILE__));
-			$this->persistLog();
-			return;
+		if ($this->getConfiguration('timeDependency', 0) == 1) {
+			if (!jeedom::isDateOk() || (((new DateTime('today midnight +1 day'))->format('I') - (new DateTime('today midnight'))->format('I')) == -1  && date('I') == 1 && date('Gi') > 159)) {
+				$this->setLog($GLOBALS['JEEDOM_SCLOG_TEXT']['launchScenario']['txt'] . $this->getHumanName() . ' ' . __('annulé car il utilise une condition de type temporelle et que la date système n\'est pas OK (ou que l\'on est en changement d\'heure négatif)', __FILE__));
+				$this->setState('stop');
+				$this->setPID();
+				$this->persistLog();
+				return;
+			}
 		}
-
-		$cmd = cmd::byId(str_replace('#', '', $_trigger));
-		if (is_object($cmd)) {
-			log::add('event', 'info', __('Exécution du scénario ', __FILE__) . $this->getHumanName() . __(' déclenché par : ', __FILE__) . $cmd->getHumanName());
+		if($this->getTag('trigger') == 'scenario'){
+			$obj_trigger = scenario::byId(str_replace('#', '', $this->getTag('trigger_id')));
+		}else{
+			$obj_trigger = cmd::byId(str_replace('#', '', $this->getTag('trigger_id')));
+		}
+		if (is_object($obj_trigger)) {
+			log::add('event', 'info', __('Exécution du scénario', __FILE__) . ' ' . $this->getHumanName() . ' ' . __('déclenché par :', __FILE__) . ' ' . $obj_trigger->getHumanName());
 			if ($this->getConfiguration('timeline::enable')) {
-				jeedom::addTimelineEvent(array('type' => 'scenario', 'id' => $this->getId(), 'name' => $this->getHumanName(true), 'datetime' => date('Y-m-d H:i:s'), 'trigger' => $cmd->getHumanName(true)));
+				$timeline = new timeline();
+				$timeline->setType('scenario');
+				$timeline->setFolder($this->getConfiguration('timeline::folder'));
+				$timeline->setLink_id($this->getId());
+				$timeline->setName($this->getHumanName(true, true, true, true));
+				$timeline->setOptions(array('trigger' => $obj_trigger->getHumanName(true)));
+				$timeline->save();
 			}
 		} else {
-			log::add('event', 'info', __('Exécution du scénario ', __FILE__) . $this->getHumanName() . __(' déclenché par : ', __FILE__) . $_trigger);
+			log::add('event', 'info', __('Exécution du scénario', __FILE__) . ' ' . $this->getHumanName() . ' ' . __('déclenché par :', __FILE__) . ' ' . $this->getTag('trigger'));
 			if ($this->getConfiguration('timeline::enable')) {
-				jeedom::addTimelineEvent(array('type' => 'scenario', 'id' => $this->getId(), 'name' => $this->getHumanName(true), 'datetime' => date('Y-m-d H:i:s'), 'trigger' => $_trigger == 'schedule' ? 'programmation' : $_trigger));
+				$timeline = new timeline();
+				$timeline->setType('scenario');
+				$timeline->setFolder($this->getConfiguration('timeline::folder'));
+				$timeline->setLink_id($this->getId());
+				$timeline->setName($this->getHumanName(true, true, true, true));
+				$timeline->setOptions(array('trigger' => ($this->getTag('trigger') == 'schedule') ? 'programmation' : $this->getTag('trigger')));
+				$timeline->save();
 			}
+		}
+		if ($this->getState() == 'in progress' && $this->getConfiguration('allowMultiInstance', 0) == 0) {
+			return;
 		}
 		if (count($this->getTags()) == 0) {
-			$this->setLog('Start : ' . trim($_message, "'") . '.');
+			$this->setLog($GLOBALS['JEEDOM_SCLOG_TEXT']['start']['txt'] . ' ' . $this->getTag('message') . '.');
 		} else {
-			$this->setLog('Start : ' . trim($_message, "'") . '. Tags : ' . json_encode($this->getTags()));
+			$this->setLog($GLOBALS['JEEDOM_SCLOG_TEXT']['start']['txt'] . ' ' . $this->getTag('message') . '. Tags : ' . json_encode($this->getTags(), JSON_UNESCAPED_UNICODE));
 		}
 		$this->setLastLaunch(date('Y-m-d H:i:s'));
 		$this->setState('in progress');
 		$this->setPID(getmypid());
-		$this->setRealTrigger($_trigger);
-		foreach ($this->getElement() as $element) {
+		foreach (($this->getElement()) as $element) {
 			if (!$this->getDo()) {
 				break;
 			}
@@ -792,126 +959,118 @@ class scenario {
 		}
 		$this->setState('stop');
 		$this->setPID();
-		$this->setLog(__('Fin correcte du scénario', __FILE__));
+		$this->setLog($GLOBALS['JEEDOM_SCLOG_TEXT']['finishOk']['txt']);
 		$this->persistLog();
 		return $this->getReturn();
 	}
 	/**
 	 *
-	 * @param type $_name
-	 * @return \scenario
+	 * @param string $_name
+	 * @return scenario
 	 */
 	public function copy($_name) {
 		$scenarioCopy = clone $this;
 		$scenarioCopy->setName($_name);
 		$scenarioCopy->setId('');
 		$scenario_element_list = array();
-		foreach ($this->getElement() as $element) {
+		foreach (($this->getElement()) as $element) {
 			$scenario_element_list[] = $element->copy();
 		}
 		$scenarioCopy->setScenarioElement($scenario_element_list);
 		$scenarioCopy->setLog('');
 		$scenarioCopy->save();
-		if (file_exists(dirname(__FILE__) . '/../../log/scenarioLog/scenario' . $scenarioCopy->getId() . '.log')) {
-			unlink(dirname(__FILE__) . '/../../log/scenarioLog/scenario' . $scenarioCopy->getId() . '.log');
+		if (file_exists(__DIR__ . '/../../log/scenarioLog/scenario' . $scenarioCopy->getId() . '.log')) {
+			unlink(__DIR__ . '/../../log/scenarioLog/scenario' . $scenarioCopy->getId() . '.log');
 		}
 		return $scenarioCopy;
 	}
 	/**
 	 *
-	 * @param type $_version
+	 * @param string $_version
 	 * @return string
 	 */
 	public function toHtml($_version) {
 		if (!$this->hasRight('r')) {
 			return '';
 		}
-		$mc = cache::byKey('scenarioHtml' . $_version . $this->getId());
-		if ($mc->getValue() != '') {
-			return $mc->getValue();
-		}
-
 		$version = jeedom::versionAlias($_version);
+		$name = ($this->getDisplay('name') != '') ? $this->getDisplay('name') : $this->getName();
 		$replace = array(
 			'#id#' => $this->getId(),
 			'#state#' => $this->getState(),
 			'#isActive#' => $this->getIsActive(),
-			'#name#' => ($this->getDisplay('name') != '') ? $this->getDisplay('name') : $this->getHumanName(),
-			'#shortname#' => ($this->getDisplay('name') != '') ? $this->getDisplay('name') : $this->getName(),
-			'#treename#' => $this->getHumanName(false, false, false, false, true),
+			'#name#' => $name,
 			'#icon#' => $this->getIcon(),
-			'#lastLaunch#' => $this->getLastLaunch(),
 			'#lastLaunch#' => $this->getLastLaunch(),
 			'#scenarioLink#' => $this->getLinkToConfiguration(),
 			'#version#' => $_version,
+			'#height#' => $this->getDisplay('height', 'auto'),
+			'#width#' => $this->getDisplay('width', 'auto'),
+			"#group#" => $this->getGroup(),
 		);
+		if ($replace['#height#'] == 'auto') {
+			$replace['#height#'] = '110px';
+		}
+		if ($replace['#width#'] == 'auto') {
+			$replace['#width#'] = '185px';
+		}
 		if (!isset(self::$_templateArray)) {
 			self::$_templateArray = array();
 		}
 		if (!isset(self::$_templateArray[$version])) {
 			self::$_templateArray[$version] = getTemplate('core', $version, 'scenario');
 		}
+		if (config::byKey('interface::advance::vertCentering', 'core', 0) == 1) {
+			$replace['#isVerticalAlign#'] = 'verticalAlign';
+		}
 		$html = template_replace($replace, self::$_templateArray[$version]);
-		cache::set('scenarioHtml' . $version . $this->getId(), $html);
+		$html =  translate::exec($html, 'core/template/widgets.html');
 		return $html;
 	}
 	/**
 	 *
 	 */
 	public function emptyCacheWidget() {
-		$mc = cache::byKey('scenarioHtmldashboard' . $this->getId());
-		$mc->remove();
-		$mc = cache::byKey('scenarioHtmlmobile' . $this->getId());
-		$mc->remove();
-		$mc = cache::byKey('scenarioHtmlmview' . $this->getId());
-		$mc->remove();
-		$mc = cache::byKey('scenarioHtmldview' . $this->getId());
-		$mc->remove();
+		
 	}
 	/**
 	 *
-	 * @param type $_only_class
+	 * @param bool $_only_class
 	 * @return string
 	 */
 	public function getIcon($_only_class = false) {
 		if ($_only_class) {
-			if ($this->getIsActive() == 1) {
-				switch ($this->getState()) {
-					case 'in progress':
-						return 'fa fa-spinner fa-spin';
-					case 'error':
-						return 'fa fa-exclamation-triangle';
-					default:
-						if (strpos($this->getDisplay('icon'), '<i') === 0) {
-							return str_replace(array('<i', 'class=', '"', '/>'), '', $this->getDisplay('icon'));
-						}
-						return 'fa fa-check';
-				}
-			} else {
-				return 'fa fa-times';
+			switch ($this->getState()) {
+				case 'starting':
+					return 'fas fa-hourglass-start';
+				case 'in progress':
+					return 'fas fa-spinner fa-spin';
+				case 'error':
+					return 'fas fa-exclamation-triangle';
+				default:
+					if (strpos($this->getDisplay('icon'), '<i') === 0) {
+						return str_replace(array('<i', 'class=', '"', '/>', '></i>'), '', $this->getDisplay('icon'));
+					}
+					return 'fas fa-check';
 			}
-		} else {
-			if ($this->getIsActive() == 1) {
-				switch ($this->getState()) {
-					case 'in progress':
-						return '<i class="fa fa-spinner fa-spin"></i>';
-					case 'error':
-						return '<i class="fa fa-exclamation-triangle"></i>';
-					default:
-						if (strpos($this->getDisplay('icon'), '<i') === 0) {
-							return $this->getDisplay('icon');
-						}
-						return '<i class="fa fa-check"></i>';
-				}
-			} else {
-				return '<i class="fa fa-times"></i>';
-			}
+			return 'fas fa-times';
 		}
+		switch ($this->getState()) {
+			case 'starting':
+				return '	<i class="fas fa-hourglass-start"></i>';
+			case 'in progress':
+				return '<i class="fas fa-spinner fa-spin"></i>';
+			case 'error':
+				return '<i class="fas fa-exclamation-triangle"></i>';
+			default:
+				if ($this->getDisplay('icon') != '') {
+					return $this->getDisplay('icon');
+				}
+				return '<i class="fas fa-check"></i>';
+		}
+		return '<i class="fas fa-times"></i>';
 	}
-	/**
-	 *
-	 * @return type
-	 */
+
 	public function getLinkToConfiguration() {
 		return 'index.php?v=d&p=scenario&id=' . $this->getId();
 	}
@@ -936,55 +1095,47 @@ class scenario {
 			$this->setConfiguration('logmode', 'default');
 		}
 	}
-	/**
-	 *
-	 */
+
 	public function postInsert() {
 		$this->setState('stop');
 		$this->setPID();
 	}
-	/**
-	 *
-	 */
+
 	public function save() {
 		if ($this->getLastLaunch() == '' && ($this->getMode() == 'schedule' || $this->getMode() == 'all')) {
 			$calculateScheduleDate = $this->calculateScheduleDate();
 			$this->setLastLaunch($calculateScheduleDate['prevDate']);
 		}
 		DB::save($this);
-		$this->emptyCacheWidget();
 		if ($this->_changeState) {
-			event::add('scenario::update', array('scenario_id' => $this->getId(), 'isActive' => $this->getIsActive(), 'state' => $this->getState(), 'lastLaunch' => $this->getLastLaunch()));
+			$this->_changeState = false;
+			event::add('scenario::update', array('scenario_id' => $this->getId(), 'isActive' => $this->getIsActive(), 'state' => $this->getState(), 'lastLaunch' => $this->getLastLaunch(), 'name' => $this->getName(), 'icon' => $this->getIcon()));
 		}
+		return true;
 	}
-	/**
-	 *
-	 */
+
 	public function refresh() {
 		DB::refresh($this);
 	}
-	/**
-	 *
-	 * @return type
-	 */
+
 	public function remove() {
 		viewData::removeByTypeLinkId('scenario', $this->getId());
 		dataStore::removeByTypeLinkId('scenario', $this->getId());
-		foreach ($this->getElement() as $element) {
+		foreach (($this->getElement()) as $element) {
 			$element->remove();
 		}
-		$this->emptyCacheWidget();
-		if (file_exists(dirname(__FILE__) . '/../../log/scenarioLog/scenario' . $this->getId() . '.log')) {
-			unlink(dirname(__FILE__) . '/../../log/scenarioLog/scenario' . $this->getId() . '.log');
+		if (file_exists(__DIR__ . '/../../log/scenarioLog/scenario' . $this->getId() . '.log')) {
+			unlink(__DIR__ . '/../../log/scenarioLog/scenario' . $this->getId() . '.log');
 		}
 		cache::delete('scenarioCacheAttr' . $this->getId());
+		jeedom::addRemoveHistory(array('id' => $this->getId(), 'name' => $this->getHumanName(), 'date' => date('Y-m-d H:i:s'), 'type' => 'scenario'));
 		return DB::remove($this);
 	}
 	/**
 	 *
-	 * @param type $_key
-	 * @param type $_private
-	 * @return boolean
+	 * @param string $_key
+	 * @param bool $_private
+	 * @return bool
 	 */
 	public function removeData($_key, $_private = false) {
 		if ($_private) {
@@ -999,10 +1150,10 @@ class scenario {
 	}
 	/**
 	 *
-	 * @param type $_key
-	 * @param type $_value
+	 * @param string $_key
+	 * @param string $_value
 	 * @param bool $_private
-	 * @return boolean
+	 * @return true
 	 */
 	public function setData($_key, $_value, $_private = false) {
 		$dataStore = new dataStore();
@@ -1029,23 +1180,27 @@ class scenario {
 		}
 		return $_default;
 	}
-	/**
-	 *
-	 * @return type
-	 */
+
 	public function calculateScheduleDate() {
 		$calculatedDate = array('prevDate' => '', 'nextDate' => '');
 		if (is_array($this->getSchedule())) {
 			$calculatedDate_tmp = array('prevDate' => '', 'nextDate' => '');
-			foreach ($this->getSchedule() as $schedule) {
+			foreach (($this->getSchedule()) as $schedule) {
 				try {
-					$c = new Cron\CronExpression($schedule, new Cron\FieldFactory);
+					$c = new Cron\CronExpression(checkAndFixCron($schedule), new Cron\FieldFactory);
 					$calculatedDate_tmp['prevDate'] = $c->getPreviousRunDate()->format('Y-m-d H:i:s');
 					$calculatedDate_tmp['nextDate'] = $c->getNextRunDate()->format('Y-m-d H:i:s');
+					$schedule_exp = explode(' ',trim($schedule));
+					if(is_array($schedule_exp) && count($schedule_exp) == 6 ){
+					 	if($schedule_exp[5] != $c->getPreviousRunDate()->format('Y')){
+							$calculatedDate['prevDate'] = '';
+						}
+						if($schedule_exp[5] != $c->getNextRunDate()->format('Y')){
+							$calculatedDate['nextDate'] = '';
+						}
+					}
 				} catch (Exception $exc) {
-
 				} catch (Error $exc) {
-
 				}
 				if ($calculatedDate['prevDate'] == '' || strtotime($calculatedDate['prevDate']) < strtotime($calculatedDate_tmp['prevDate'])) {
 					$calculatedDate['prevDate'] = $calculatedDate_tmp['prevDate'];
@@ -1056,88 +1211,41 @@ class scenario {
 			}
 		} else {
 			try {
-				$c = new Cron\CronExpression($this->getSchedule(), new Cron\FieldFactory);
+				$c = new Cron\CronExpression(checkAndFixCron($this->getSchedule()), new Cron\FieldFactory);
 				$calculatedDate['prevDate'] = $c->getPreviousRunDate()->format('Y-m-d H:i:s');
 				$calculatedDate['nextDate'] = $c->getNextRunDate()->format('Y-m-d H:i:s');
+				$schedule = explode(' ',$this->getSchedule());
+				if(count($schedule) == 6 && $schedule[5] != $c->getPreviousRunDate()->format('Y')){
+					$calculatedDate['prevDate'] = '';
+				}
+				if(count($schedule) == 6 && $schedule[5] != $c->getNextRunDate()->format('Y')){
+					$calculatedDate['nextDate'] = '';
+				}
 			} catch (Exception $exc) {
-
 			} catch (Error $exc) {
-
 			}
 		}
+		
 		return $calculatedDate;
 	}
+
 	/**
 	 *
 	 * @return boolean
 	 */
-	public function isDue() {
+	public function isDue($_datetime = null) {
 		$last = strtotime($this->getLastLaunch());
 		$now = time();
-		$now = ($now - $now % 60);
-		$last = ($last - $last % 60);
-		if ($now == $last) {
+		if (($now - $now % 60) == ($last - $last % 60)) {
 			return false;
 		}
-		if (is_array($this->getSchedule())) {
-			foreach ($this->getSchedule() as $schedule) {
-				try {
-					$c = new Cron\CronExpression($schedule, new Cron\FieldFactory);
-					try {
-						if ($c->isDue()) {
-							return true;
-						}
-					} catch (Exception $e) {
-
-					} catch (Error $e) {
-
-					}
-					try {
-						$prev = $c->getPreviousRunDate()->getTimestamp();
-					} catch (Exception $e) {
-						continue;
-					} catch (Error $e) {
-						continue;
-					}
-					$lastCheck = strtotime($this->getLastLaunch());
-					$diff = abs((strtotime('now') - $prev) / 60);
-					if ($lastCheck <= $prev && $diff <= config::byKey('maxCatchAllow') || config::byKey('maxCatchAllow') == -1) {
-						return true;
-					}
-				} catch (Exception $e) {
-
-				} catch (Error $e) {
-
-				}
-			}
-		} else {
-			try {
-				$c = new Cron\CronExpression($this->getSchedule(), new Cron\FieldFactory);
-				try {
-					if ($c->isDue()) {
-						return true;
-					}
-				} catch (Exception $e) {
-
-				} catch (Error $e) {
-
-				}
-				try {
-					$prev = $c->getPreviousRunDate()->getTimestamp();
-				} catch (Exception $e) {
-					return false;
-				} catch (Error $e) {
-					return false;
-				}
-				$lastCheck = strtotime($this->getLastLaunch());
-				$diff = abs((strtotime('now') - $prev) / 60);
-				if ($lastCheck <= $prev && $diff <= config::byKey('maxCatchAllow') || config::byKey('maxCatchAllow') == -1) {
-					return true;
-				}
-			} catch (Exception $exc) {
-
-			} catch (Error $exc) {
-
+		$schedules = $this->getSchedule();
+		if(!is_array($schedules)){
+			$schedules = [$schedules];
+		}
+		foreach ($schedules as $schedule) {
+			if(cronIsDue($schedule,$_datetime,$this->getLastLaunch())){
+				return true;
 			}
 		}
 		return false;
@@ -1169,7 +1277,7 @@ class scenario {
 						$cron->halt();
 						$cron->remove();
 					} catch (Exception $e) {
-						log::add('scenario', 'info', __('Can not stop subtask : ') . print_r($cron->getOption(), true));
+						log::add('scenario', 'info', __('Impossible d\'arrêter la sous tâche :', __FILE__) . ' ' . json_encode($cron->getOption(), JSON_UNESCAPED_UNICODE));
 					}
 				}
 			}
@@ -1194,16 +1302,13 @@ class scenario {
 				}
 			}
 			if ($this->running()) {
-				throw new Exception(__('Impossible d\'arrêter le scénario : ', __FILE__) . $this->getHumanName() . __('. PID : ', __FILE__) . $this->getPID());
+				throw new Exception(__('Impossible d\'arrêter le scénario :', __FILE__) . ' ' . $this->getHumanName() . '. ' . __('PID :', __FILE__) . ' ' . $this->getPID());
 			}
 		}
 		$this->setState('stop');
 		return true;
 	}
-	/**
-	 *
-	 * @return type
-	 */
+
 	public function getElement() {
 		if (count($this->_elements) > 0) {
 			return $this->_elements;
@@ -1211,7 +1316,7 @@ class scenario {
 		$return = array();
 		$elements = $this->getScenarioElement();
 		if (is_array($elements)) {
-			foreach ($this->getScenarioElement() as $element_id) {
+			foreach (($this->getScenarioElement()) as $element_id) {
 				$element = scenarioElement::byId($element_id);
 				if (is_object($element)) {
 					$return[] = $element;
@@ -1221,7 +1326,7 @@ class scenario {
 			return $return;
 		}
 		if ($elements != '') {
-			$element = scenarioElement::byId($element_id);
+			$element = scenarioElement::byId($elements);
 			if (is_object($element)) {
 				$return[] = $element;
 				$this->_elements = $return;
@@ -1232,8 +1337,8 @@ class scenario {
 	}
 	/**
 	 *
-	 * @param type $_mode
-	 * @return type
+	 * @param string $_mode accepted value: ['text'|'array']
+	 * @return string|array depending $_mode parameter
 	 */
 	public function export($_mode = 'text') {
 		if ($_mode == 'text') {
@@ -1256,14 +1361,14 @@ class scenario {
 				}
 			}
 			if ($this->getMode() == 'provoke' || $this->getMode() == 'all') {
-				foreach ($this->getTrigger() as $trigger) {
+				foreach (($this->getTrigger()) as $trigger) {
 					$return .= '    - Evènement : ' . jeedom::toHumanReadable($trigger) . "\n";
 				}
 			}
 			$return .= "\n";
 			$return .= $this->getDescription();
 			$return .= "\n\n";
-			foreach ($this->getElement() as $element) {
+			foreach (($this->getElement()) as $element) {
 				$exports = explode("\n", $element->export());
 				foreach ($exports as $export) {
 					$return .= "    " . $export . "\n";
@@ -1274,7 +1379,7 @@ class scenario {
 			$return = utils::o2a($this);
 			$return['trigger'] = jeedom::toHumanReadable($return['trigger']);
 			$return['elements'] = array();
-			foreach ($this->getElement() as $element) {
+			foreach (($this->getElement()) as $element) {
 				$return['elements'][] = $element->getAjaxElement('array');
 			}
 			if (isset($return['id'])) {
@@ -1291,6 +1396,12 @@ class scenario {
 			}
 			if (isset($return['object_id'])) {
 				unset($return['object_id']);
+			}
+			if (isset($return['state'])) {
+				unset($return['state']);
+			}
+			if (isset($return['lastLaunch'])) {
+				unset($return['lastLaunch']);
 			}
 			if (isset($return['pid'])) {
 				unset($return['pid']);
@@ -1310,6 +1421,9 @@ class scenario {
 			if (isset($return['_realTrigger'])) {
 				unset($return['_realTrigger']);
 			}
+			if (isset($return['_realTriggerValue'])) {
+				unset($return['_realTriggerValue']);
+			}
 			if (isset($return['_templateArray'])) {
 				unset($return['_templateArray']);
 			}
@@ -1324,26 +1438,37 @@ class scenario {
 	 * @return object
 	 */
 	public function getObject() {
-		return object::byId($this->object_id);
+		return jeeObject::byId($this->object_id);
 	}
 	/**
 	 *
-	 * @param type $_complete
-	 * @param type $_noGroup
-	 * @param type $_tag
-	 * @param type $_prettify
-	 * @param type $_withoutScenarioName
+	 * @param bool $_complete
+	 * @param bool $_noGroup
+	 * @param bool $_tag
+	 * @param bool $_prettify
+	 * @param bool $_withoutScenarioName
 	 * @return string
 	 */
-	public function getHumanName($_complete = false, $_noGroup = false, $_tag = false, $_prettify = false, $_withoutScenarioName = false) {
+	public function getHumanName($_complete = true, $_noGroup = false, $_tag = false, $_prettify = false, $_withoutScenarioName = false, $_object_name = true) {
+		//$_complete : add None if no tag or no group
+		//$_noGroup: add group name
+		//$_tag: html label with custom color
 		$name = '';
-		if (is_numeric($this->getObject_id())) {
+		if (!$_noGroup) {
+			$groupName = $this->getGroup() != '' ? $this->getGroup() : __('Aucun', __FILE__);
+			if ($_tag) {
+				$name .= '<span class="label label-info">' . $groupName . '</span> ';
+			} else {
+				$name .= '[' . $groupName . ']';
+			}
+		}
+		if ($_object_name && is_numeric($this->getObject_id()) && is_object($this->getObject())) {
 			$object = $this->getObject();
 			if ($_tag) {
-				if ($object->getDisplay('tagColor') != '') {
-					$name .= '<span class="label" style="text-shadow : none;background-color:' . $object->getDisplay('tagColor') . ' !important;color:' . $object->getDisplay('tagTextColor', 'white') . ' !important">' . $object->getName() . '</span>';
+				if ($object->getConfiguration('useCustomColor') == 1) {
+					$name .= '<span class="label" style="background-color:' . $object->getDisplay('tagColor') . ' ;color:' . $object->getDisplay('tagTextColor', 'white') . '">' . $object->getName() . '</span>';
 				} else {
-					$name .= '<span class="label label-primary" style="text-shadow : none;">' . $object->getName() . '</span>';
+					$name .= '<span class="label labelObjectHuman">' . $object->getName() . '</span>';
 				}
 			} else {
 				$name .= '[' . $object->getName() . ']';
@@ -1351,17 +1476,8 @@ class scenario {
 		} else {
 			if ($_complete) {
 				if ($_tag) {
-					$name .= '<span class="label label-default" style="text-shadow : none;">' . __('Aucun', __FILE__) . '</span>';
+					$name .= '<span class="label labelObjectHuman">' . __('Aucun', __FILE__) . '</span>';
 				} else {
-					$name .= '[' . __('Aucun', __FILE__) . ']';
-				}
-			}
-		}
-		if (!$_noGroup) {
-			if ($this->getGroup() != '') {
-				$name .= '[' . $this->getGroup() . ']';
-			} else {
-				if ($_complete) {
 					$name .= '[' . __('Aucun', __FILE__) . ']';
 				}
 			}
@@ -1383,7 +1499,7 @@ class scenario {
 	}
 	/**
 	 *
-	 * @param type $_right
+	 * @param string $_right
 	 * @return boolean
 	 */
 	public function hasRight($_right, $_user = null) {
@@ -1407,16 +1523,12 @@ class scenario {
 		}
 		return false;
 	}
-	/**
-	 *
-	 * @param type $_partial
-	 * @return type
-	 */
+
 	public function persistLog($_partial = false) {
 		if ($this->getConfiguration('logmode', 'default') == 'none') {
 			return;
 		}
-		$path = dirname(__FILE__) . '/../../log/scenarioLog';
+		$path = __DIR__ . '/../../log/scenarioLog';
 		if (!file_exists($path)) {
 			mkdir($path);
 		}
@@ -1427,22 +1539,20 @@ class scenario {
 			file_put_contents($path, "------------------------------------\n" . $this->getLog(), FILE_APPEND);
 		}
 	}
-	/**
-	 *
-	 * @return type
-	 */
+
 	public function toArray() {
 		$return = utils::o2a($this, true);
-		$return['state'] = $this->getCache('state');
-		$return['lastLaunch'] = $this->getCache('lastLaunch');
+		$cache = $this->getCache(array('state', 'lastLaunch'));
+		$return['state'] = $cache['state'];
+		$return['lastLaunch'] = $cache['lastLaunch'];
 		return $return;
 	}
 	/**
 	 *
-	 * @param type $_data
-	 * @param type $_level
-	 * @param type $_drill
-	 * @return string
+	 * @param array $_data
+	 * @param int $_level
+	 * @param null|int $_drill
+	 * @return array
 	 */
 	public function getLinkData(&$_data = array('node' => array(), 'link' => array()), $_level = 0, $_drill = null) {
 		if ($_drill === null) {
@@ -1451,23 +1561,21 @@ class scenario {
 		if (isset($_data['node']['scenario' . $this->getId()])) {
 			return;
 		}
-		if ($this->getIsActive() == 0 && $_level > 0) {
-			return $_data;
-		}
 		$_level++;
 		if ($_level > $_drill) {
 			return $_data;
 		}
-
 		$_data['node']['scenario' . $this->getId()] = array(
 			'id' => 'scenario' . $this->getId(),
 			'name' => $this->getName(),
+			'type' => __('Scénario', __FILE__),
 			'fontweight' => ($_level == 1) ? 'bold' : 'normal',
 			'shape' => 'rect',
 			'width' => 40,
 			'height' => 40,
 			'color' => 'green',
 			'image' => 'core/img/scenario.png',
+			'isActive' => $this->getIsActive(),
 			'title' => $this->getHumanName(),
 			'url' => 'index.php?v=d&p=scenario&id=' . $this->getId(),
 		);
@@ -1480,40 +1588,44 @@ class scenario {
 		addGraphLink($this, 'scenario', $use['dataStore'], 'dataStore', $_data, $_level, $_drill);
 		addGraphLink($this, 'scenario', $use['view'], 'view', $_data, $_level, $_drill);
 		addGraphLink($this, 'scenario', $use['plan'], 'plan', $_data, $_level, $_drill);
+		addGraphLink($this, 'scenario', $use['plan3d'], 'plan3d', $_data, $_level, $_drill);
+		if (isset($usedBy['plugin']) && is_array($usedBy['plugin']) && count($usedBy['plugin']) > 0) {
+			foreach ($usedBy['plugin'] as $key => $value) {
+				addGraphLink($this, 'eqLogic', $value, $key, $_data, $_level, $_drill);
+			}
+		}
 		addGraphLink($this, 'scenario', $usedBy['cmd'], 'cmd', $_data, $_level, $_drill);
 		addGraphLink($this, 'scenario', $usedBy['scenario'], 'scenario', $_data, $_level, $_drill);
 		addGraphLink($this, 'scenario', $usedBy['eqLogic'], 'eqLogic', $_data, $_level, $_drill);
 		addGraphLink($this, 'scenario', $usedBy['interactDef'], 'interactDef', $_data, $_level, $_drill, array('dashvalue' => '2,6', 'lengthfactor' => 0.6));
 		addGraphLink($this, 'scenario', $usedBy['plan'], 'plan', $_data, $_level, $_drill, array('dashvalue' => '2,6', 'lengthfactor' => 0.6));
+		addGraphLink($this, 'scenario', $usedBy['plan3d'], 'plan3d', $_data, $_level, $_drill, array('dashvalue' => '2,6', 'lengthfactor' => 0.6));
 		addGraphLink($this, 'scenario', $usedBy['view'], 'view', $_data, $_level, $_drill, array('dashvalue' => '2,6', 'lengthfactor' => 0.6));
 		return $_data;
 	}
-	/**
-	 *
-	 * @return type
-	 */
+
 	public function getUse() {
 		$json = jeedom::fromHumanReadable(json_encode($this->export('array')));
 		return jeedom::getTypeUse($json);
 	}
-	/**
-	 *
-	 * @param array $_array
-	 * @return type
-	 */
+
 	public function getUsedBy($_array = false) {
 		$return = array('cmd' => array(), 'eqLogic' => array(), 'scenario' => array(), 'plan' => array(), 'view' => array());
-		$return['cmd'] = cmd::searchConfiguration('#scenario' . $this->getId() . '#');
-		$return['eqLogic'] = eqLogic::searchConfiguration('#scenario' . $this->getId() . '#');
-		$return['eqLogic'] = array_merge($return['eqLogic'], eqLogic::searchConfiguration('"scenario_id":"' . $this->getId()));
-		$return['interactDef'] = interactDef::searchByUse('#scenario' . $this->getId() . '#');
-		$return['interactDef'] = array_merge($return['interactDef'], interactDef::searchByUse('"scenario_id":"' . $this->getId()));
+		$return['cmd'] = cmd::searchConfiguration(array('#scenario' . $this->getId() . '#', '"scenario_id":"' . $this->getId() . '"'));
+		$return['eqLogic'] = eqLogic::searchConfiguration(array('#scenario' . $this->getId() . '#', '"scenario_id":"' . $this->getId() . '"'));
+		$return['interactDef'] = interactDef::searchByUse(array('#scenario' . $this->getId() . '#', '"scenario_id":"' . $this->getId() . '"'));
 		$return['scenario'] = scenario::searchByUse(array(
-			array('action' => 'scenario', 'option' => $this->getId(), 'and' => true),
+			array('action' => 'scenario', 'option' => 'scenario_id":"' . $this->getId() . '"', 'and' => true),
 			array('action' => '#scenario' . $this->getId() . '#'),
 		));
 		$return['view'] = view::searchByUse('scenario', $this->getId());
 		$return['plan'] = planHeader::searchByUse('scenario', $this->getId());
+		$return['plan3d'] = plan3dHeader::searchByUse('scenario', $this->getId());
+		foreach (plugin::listPlugin(true, false, true, true) as $plugin) {
+			if (method_exists($plugin, 'customUsedBy')) {
+				$return['plugin'][$plugin] = $plugin::customUsedBy('scenario', $this->getId());
+			}
+		}
 		if ($_array) {
 			foreach ($return as &$value) {
 				$value = utils::o2a($value);
@@ -1524,6 +1636,33 @@ class scenario {
 
 	public function clearLog() {
 		$this->_log = '';
+	}
+
+	public function resetRepeatIfStatus() {
+		foreach (($this->getElement()) as $element) {
+			$element->resetRepeatIfStatus();
+		}
+	}
+
+	public function addTag($_key,$value){
+		$tag = $this->getTags();
+		$_key = '#'.trim($_key,'#').'#';
+		$tag[$_key] = $value;
+		$this->setTags($tag);
+	}
+
+	public function getTag($_key,$_default = ''){
+		$tag = $this->getTags();
+		if(isset($tag[$_key])){
+			return $tag[$_key];
+		}
+		if(isset($tag[trim($_key,'#')])){
+			return $tag[trim($_key,'#')];
+		}
+		if(isset($tag['#'.trim($_key,'#').'#'])){
+			return $tag['#'.trim($_key,'#').'#'];
+		}
+		return $_default;
 	}
 
 	/*     * **********************Getteur Setteur*************************** */
@@ -1541,10 +1680,7 @@ class scenario {
 	public function getName() {
 		return $this->name;
 	}
-	/**
-	 *
-	 * @return type
-	 */
+
 	public function getState() {
 		return $this->getCache('state');
 	}
@@ -1555,17 +1691,11 @@ class scenario {
 	public function getIsActive() {
 		return $this->isActive;
 	}
-	/**
-	 *
-	 * @return type
-	 */
+
 	public function getGroup() {
 		return $this->group;
 	}
-	/**
-	 *
-	 * @return type
-	 */
+
 	public function getLastLaunch() {
 		return $this->getCache('lastLaunch');
 	}
@@ -1574,186 +1704,163 @@ class scenario {
 	 * @param int $id
 	 * @return $this
 	 */
-	public function setId($id) {
-		$this->id = $id;
+	public function setId($_id) {
+		$this->_changed = utils::attrChanged($this->_changed, $this->id, $_id);
+		$this->id = $_id;
 		return $this;
 	}
 	/**
 	 *
-	 * @param type $name
+	 * @param string $name
 	 * @return $this
 	 */
-	public function setName($name) {
-		if ($name != $this->getName()) {
+	public function setName($_name) {
+		$_name = cleanComponanteName($_name);
+		$_name = trim($_name);
+		if ($_name != $this->getName()) {
 			$this->_changeState = true;
+			$this->_changed = true;
 		}
-		$this->name = $name;
+		$this->name = $_name;
 		return $this;
 	}
 	/**
 	 *
-	 * @param type $isActive
+	 * @param bool $isActive
 	 * @return $this
 	 */
-	public function setIsActive($isActive) {
-		if ($isActive != $this->getIsActive()) {
+	public function setIsActive($_isActive) {
+		if ($_isActive != $this->getIsActive()) {
 			$this->_changeState = true;
+			$this->_changed = true;
 		}
-		$this->isActive = $isActive;
+		$this->isActive = $_isActive;
 		return $this;
 	}
 	/**
 	 *
-	 * @param type $group
+	 * @param string $group
 	 * @return $this
 	 */
-	public function setGroup($group) {
-		if ($group != $this->getGroup()) {
+	public function setGroup($_group) {
+		if ($_group != $this->getGroup()) {
 			$this->_changeState = true;
+			$this->_changed = true;
 		}
-		$this->group = $group;
+		$this->group = $_group;
 		return $this;
 	}
 	/**
 	 *
-	 * @param type $state
+	 * @param string $state
 	 */
 	public function setState($state) {
 		if ($this->getCache('state') != $state) {
-			$this->emptyCacheWidget();
 			event::add('scenario::update', array('scenario_id' => $this->getId(), 'state' => $state, 'lastLaunch' => $this->getLastLaunch()));
 		}
 		$this->setCache('state', $state);
 	}
 	/**
 	 *
-	 * @param type $lastLaunch
+	 * @param string $lastLaunch
 	 */
 	public function setLastLaunch($lastLaunch) {
 		$this->setCache('lastLaunch', $lastLaunch);
 	}
-	/**
-	 *
-	 * @return type
-	 */
-	public function getType() {
-		return $this->type;
-	}
-	/**
-	 *
-	 * @param type $type
-	 * @return $this
-	 */
-	public function setType($type) {
-		$this->type = $type;
-		return $this;
-	}
-	/**
-	 *
-	 * @return type
-	 */
+
 	public function getMode() {
 		return $this->mode;
 	}
 	/**
 	 *
-	 * @param type $mode
+	 * @param mixed $_mode
 	 * @return $this
 	 */
-	public function setMode($mode) {
-		$this->mode = $mode;
+	public function setMode($_mode) {
+		$this->_changed = utils::attrChanged($this->_changed, $this->mode, $_mode);
+		$this->mode = $_mode;
+		return $this;
+	}
+
+	public function getOrder() {
+		return $this->order;
+	}
+	/**
+	 *
+	 * @param mixed $_order
+	 * @return $this
+	 */
+	public function setOrder($_order) {
+		$this->_changed = utils::attrChanged($this->_changed, $this->order, $_order);
+		$this->order = $_order;
 		return $this;
 	}
 	/**
 	 *
-	 * @return string/object
+	 * @return string|object
 	 */
 	public function getSchedule() {
-		if (is_json($this->schedule)) {
-			return json_decode($this->schedule, true);
-		}
-		return $this->schedule;
+		return is_json($this->schedule, $this->schedule);
 	}
 	/**
 	 *
-	 * @param type $schedule
+	 * @param array|string $_schedule
 	 * @return $this
 	 */
-	public function setSchedule($schedule) {
-		if (is_array($schedule)) {
-			$schedule = json_encode($schedule, JSON_UNESCAPED_UNICODE);
+	public function setSchedule($_schedule) {
+		if (is_array($_schedule)) {
+			$_schedule = json_encode($_schedule, JSON_UNESCAPED_UNICODE);
 		}
-		$this->schedule = $schedule;
+		$this->_changed = utils::attrChanged($this->_changed, $this->schedule, $_schedule);
+		$this->schedule = $_schedule;
 		return $this;
 	}
-	/**
-	 *
-	 * @return type
-	 */
+
 	public function getPID() {
 		return $this->getCache('pid');
 	}
-	/**
-	 *
-	 * @param type $pid
-	 */
+
 	public function setPID($pid = '') {
 		$this->setCache('pid', $pid);
 	}
-	/**
-	 *
-	 * @return type
-	 */
+
 	public function getScenarioElement() {
-		if (is_json($this->scenarioElement)) {
-			return json_decode($this->scenarioElement, true);
-		}
-		return $this->scenarioElement;
+		return is_json($this->scenarioElement, $this->scenarioElement);
 	}
-	/**
-	 *
-	 * @param type $scenarioElement
-	 * @return $this
-	 */
-	public function setScenarioElement($scenarioElement) {
-		if (is_array($scenarioElement)) {
-			$scenarioElement = json_encode($scenarioElement, JSON_UNESCAPED_UNICODE);
+
+	public function setScenarioElement($_scenarioElement) {
+		if (is_array($_scenarioElement)) {
+			$_scenarioElement = json_encode($_scenarioElement, JSON_UNESCAPED_UNICODE);
 		}
-		$this->scenarioElement = $scenarioElement;
+		$this->_changed = utils::attrChanged($this->_changed, $this->scenarioElement, $_scenarioElement);
+		$this->scenarioElement = $_scenarioElement;
 		return $this;
 	}
-	/**
-	 *
-	 * @return type
-	 */
+
 	public function getTrigger() {
-		if (is_json($this->trigger)) {
-			return json_decode($this->trigger, true);
-		}
-		return array($this->trigger);
+		return is_json($this->trigger, array($this->trigger));
 	}
-	/**
-	 *
-	 * @param type $trigger
-	 * @return $this
-	 */
-	public function setTrigger($trigger) {
-		if (is_array($trigger)) {
-			$trigger = json_encode($trigger, JSON_UNESCAPED_UNICODE);
+
+	public function setTrigger($_trigger) {
+		if (is_array($_trigger)) {
+			$_trigger = json_encode($_trigger, JSON_UNESCAPED_UNICODE);
 		}
-		$this->trigger = cmd::humanReadableToCmd($trigger);
+		$_trigger = cmd::humanReadableToCmd($_trigger);
+		$_trigger = jeeObject::fromHumanReadable($_trigger);
+		$this->_changed = utils::attrChanged($this->_changed, $this->trigger, $_trigger);
+		$this->trigger = $_trigger;
 		return $this;
 	}
 	/**
 	 *
-	 * @return type
+	 * @return string
 	 */
 	public function getLog() {
 		return $this->_log;
 	}
 	/**
 	 *
-	 * @param type $log
+	 * @param string $log
 	 */
 	public function setLog($log) {
 		$this->_log .= '[' . date('Y-m-d H:i:s') . '][SCENARIO] ' . $log . "\n";
@@ -1764,32 +1871,26 @@ class scenario {
 	}
 	/**
 	 *
-	 * @param type $_default
-	 * @return type
+	 * @param int $_default
+	 * @return int
 	 */
-	public function getTimeout($_default = null) {
-		if ($this->timeout == '' || !is_numeric($this->timeout)) {
-			return $_default;
-		}
+	public function getTimeout($_default = 0) {
 		return $this->timeout;
 	}
 	/**
 	 *
-	 * @param string $timeout
+	 * @param string|int $_timeout
 	 * @return $this
 	 */
-	public function setTimeout($timeout) {
-		if ($timeout == '' || is_nan(intval($timeout)) || $timeout < 1) {
-			$timeout = '';
+	public function setTimeout($_timeout) {
+		if ($_timeout === '' || !is_numeric($_timeout) || $_timeout < 1) {
+			$_timeout = 0;
 		}
-		$this->timeout = $timeout;
+		$this->_changed = utils::attrChanged($this->_changed, $this->timeout, $_timeout);
+		$this->timeout = $_timeout;
 		return $this;
 	}
-	/**
-	 *
-	 * @param type $_default
-	 * @return type
-	 */
+
 	public function getObject_id($_default = null) {
 		if ($this->object_id == '' || !is_numeric($this->object_id)) {
 			return $_default;
@@ -1798,8 +1899,8 @@ class scenario {
 	}
 	/**
 	 *
-	 * @param type $_default
-	 * @return type
+	 * @param int $_default
+	 * @return int
 	 */
 	public function getIsVisible($_default = 0) {
 		if ($this->isVisible == '' || !is_numeric($this->isVisible)) {
@@ -1809,159 +1910,165 @@ class scenario {
 	}
 	/**
 	 *
-	 * @param type $object_id
+	 * @param mixed $object_id
 	 * @return $this
 	 */
 	public function setObject_id($object_id = null) {
 		if ($object_id != $this->getObject_id()) {
 			$this->_changeState = true;
+			$this->_changed = true;
 		}
 		$this->object_id = (!is_numeric($object_id)) ? null : $object_id;
 		return $this;
 	}
 	/**
 	 *
-	 * @param type $isVisible
+	 * @param int $_isVisible
 	 * @return $this
 	 */
-	public function setIsVisible($isVisible) {
-		$this->isVisible = $isVisible;
+	public function setIsVisible($_isVisible) {
+		$this->_changed = utils::attrChanged($this->_changed, $this->isVisible, $_isVisible);
+		$this->isVisible = $_isVisible;
 		return $this;
 	}
 	/**
 	 *
-	 * @param type $_key
-	 * @param type $_default
-	 * @return type
+	 * @param string $_key
+	 * @param string $_default
+	 * @return mixed
 	 */
 	public function getDisplay($_key = '', $_default = '') {
 		return utils::getJsonAttr($this->display, $_key, $_default);
 	}
 	/**
 	 *
-	 * @param type $_key
-	 * @param type $_value
+	 * @param string $_key
+	 * @param string $_value
 	 * @return $this
 	 */
 	public function setDisplay($_key, $_value) {
-		$this->display = utils::setJsonAttr($this->display, $_key, $_value);
+		$display = utils::setJsonAttr($this->display, $_key, $_value);
+		$this->_changed = utils::attrChanged($this->_changed, $this->display, $display);
+		$this->display = $display;
 		return $this;
 	}
 	/**
 	 *
-	 * @return type
+	 * @return string
 	 */
 	public function getDescription() {
 		return $this->description;
 	}
 	/**
 	 *
-	 * @param type $description
+	 * @param string $_description
 	 * @return $this
 	 */
-	public function setDescription($description) {
-		$this->description = $description;
+	public function setDescription($_description) {
+		$this->_changed = utils::attrChanged($this->_changed, $this->description, $_description);
+		$this->description = $_description;
 		return $this;
 	}
 	/**
 	 *
-	 * @param type $_key
-	 * @param type $_default
-	 * @return type
+	 * @param string $_key
+	 * @param string $_default
+	 * @return mixed
 	 */
 	public function getConfiguration($_key = '', $_default = '') {
 		return utils::getJsonAttr($this->configuration, $_key, $_default);
 	}
 	/**
 	 *
-	 * @param type $_key
-	 * @param type $_value
+	 * @param string $_key
+	 * @param string $_value
 	 * @return $this
 	 */
 	public function setConfiguration($_key, $_value) {
-		$this->configuration = utils::setJsonAttr($this->configuration, $_key, $_value);
+		$configuration = utils::setJsonAttr($this->configuration, $_key, $_value);
+		$this->_changed = utils::attrChanged($this->_changed, $this->configuration, $configuration);
+		$this->configuration = $configuration;
 		return $this;
 	}
+	
 	/**
+	 * getReturn
 	 *
-	 * @return type
-	 */
-	public function getRealTrigger() {
-		return $this->_realTrigger;
-	}
-	/**
-	 *
-	 * @param type $_realTrigger
-	 * @return $this
-	 */
-	public function setRealTrigger($_realTrigger) {
-		$this->_realTrigger = $_realTrigger;
-		return $this;
-	}
-	/**
-	 *
-	 * @return type
+	 * @return bool
 	 */
 	public function getReturn() {
 		return $this->_return;
 	}
 	/**
 	 *
-	 * @param type $_return
+	 * @param bool $_return
 	 * @return $this
 	 */
 	public function setReturn($_return) {
 		$this->_return = $_return;
 		return $this;
 	}
+
 	/**
+	 * getTags
 	 *
-	 * @return type
+	 * @return array
 	 */
 	public function getTags() {
+		if(!is_array($this->_tags)){
+			return [];
+		}
 		return $this->_tags;
 	}
+
 	/**
+	 * setTags
 	 *
-	 * @param type $_tags
+	 * @param array $_tags
 	 * @return $this
 	 */
 	public function setTags($_tags) {
 		$this->_tags = $_tags;
 		return $this;
 	}
+
 	/**
+	 * getDo
 	 *
-	 * @return type
+	 * @return bool
 	 */
 	public function getDo() {
 		return $this->_do;
 	}
 	/**
 	 *
-	 * @param type $_do
+	 * @param bool $_do
 	 * @return $this
 	 */
 	public function setDo($_do) {
 		$this->_do = $_do;
 		return $this;
 	}
-	/**
-	 *
-	 * @param type $_key
-	 * @param type $_default
-	 * @return type
-	 */
+
 	public function getCache($_key = '', $_default = '') {
-		return utils::getJsonAttr(cache::byKey('scenarioCacheAttr' . $this->getId())->getValue(), $_key, $_default);
+		$cache = cache::byKey('scenarioCacheAttr' . $this->getId())->getValue();
+		return utils::getJsonAttr($cache, $_key, $_default);
 	}
 	/**
 	 *
-	 * @param type $_key
-	 * @param type $_value
+	 * @param string $_key
+	 * @param mixed $_value
 	 */
 	public function setCache($_key, $_value = null) {
 		cache::set('scenarioCacheAttr' . $this->getId(), utils::setJsonAttr(cache::byKey('scenarioCacheAttr' . $this->getId())->getValue(), $_key, $_value));
 	}
 
+	public function getChanged() {
+		return $this->_changed;
+	}
+
+	public function setChanged($_changed) {
+		$this->_changed = $_changed;
+		return $this;
+	}
 }

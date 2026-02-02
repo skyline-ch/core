@@ -1,11 +1,3 @@
-/*
-  Highcharts JS v6.0.4 (2017-12-15)
-
- Indicator series type for Highstock
-
- (c) 2010-2017 Sebastian Bochan
-
- License: www.highcharts.com/license
-*/
-(function(a){"object"===typeof module&&module.exports?module.exports=a:a(Highcharts)})(function(a){(function(a){var q=a.isArray;a=a.seriesType;a("ema","sma",{name:"EMA (14)",params:{index:0,period:14}},{getValues:function(a,g){var b=g.period,h=a.xData,c=a.yData,r=c?c.length:0;a=2/(b+1);var d=0,f=0,n=0,k=[],l=[],m=[],e=-1,p=[];if(h.length<b)return!1;for(q(c[0])&&(e=g.index?g.index:0);f<b;)p.push([h[f],0>e?c[f]:c[f][e]]),n+=0>e?c[f]:c[f][e],f++;g=n/b;for(b=f;b<r;b++)f=0>e?c[b-1]:c[b-1][e],d=[h[b-1],
-0===d?g:f*a+d*(1-a)],k.push(d),l.push(d[0]),m.push(d[1]),d=d[1],p.push([h[b],0>e?c[b]:c[b][e]]);c=0>e?c[b-1]:c[b-1][e];d=[h[b-1],0===d?void 0:c*a+d*(1-a)];k.push(d);l.push(d[0]);m.push(d[1]);return{values:k,xData:l,yData:m}}})})(a)});
+(function(a){"object"===typeof module&&module.exports?(a["default"]=a,module.exports=a):"function"===typeof define&&define.amd?define(["highcharts"],function(c){a(c);a.Highcharts=c;return a}):a("undefined"!==typeof Highcharts?Highcharts:void 0)})(function(a){(function(a,b,d,e){a.hasOwnProperty(b)||(a[b]=e.apply(null,d),"function"===typeof CustomEvent&&window.dispatchEvent(new CustomEvent("HighchartsModuleLoaded",{detail:{path:b,module:a[b]}})))})(a?a._modules:{},"masters/indicators/ema.src.js",[],
+function(){})});
+//# sourceMappingURL=ema.js.map

@@ -1,40 +1,54 @@
 <?php
 
+/** @entrypoint */
+/** @console */
+
 /* This file is part of Jeedom.
- *
- * Jeedom is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * Jeedom is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with Jeedom. If not, see <http://www.gnu.org/licenses/>.
- */
+*
+* Jeedom is free software: you can redistribute it and/or modify
+* it under the terms of the GNU General Public License as published by
+* the Free Software Foundation, either version 3 of the License, or
+* (at your option) any later version.
+*
+* Jeedom is distributed in the hope that it will be useful,
+* but WITHOUT ANY WARRANTY; without even the implied warranty of
+* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+* GNU General Public License for more details.
+*
+* You should have received a copy of the GNU General Public License
+* along with Jeedom. If not, see <http://www.gnu.org/licenses/>.
+*/
 
-if (php_sapi_name() != 'cli' || isset($_SERVER['REQUEST_METHOD']) || !isset($_SERVER['argc'])) {
-	header("Statut: 404 Page non trouvée");
-	header('HTTP/1.0 404 Not Found');
-	$_SERVER['REDIRECT_STATUS'] = 404;
-	echo "<h1>404 Non trouvé</h1>";
-	echo "La page que vous demandez ne peut être trouvée.";
-	exit();
-}
+require_once __DIR__ . '/console.php';
 
-if (isset($argv)) {
-	foreach ($argv as $arg) {
-		$argList = explode('=', $arg);
-		if (isset($argList[0]) && isset($argList[1])) {
-			$_GET[$argList[0]] = $argList[1];
-		}
+require_once __DIR__ . "/core.inc.php";
+
+function jeeCron_errorHandler($cron, $class, $function,$datetimeStart, $e) {
+	$cron->setState('error');
+	$cron->setPID('');
+	$cron->setCache('runtime', strtotime('now') - $datetimeStart);
+	$logicalId = config::genKey();
+	if ($e->getCode() != 0) {
+		$logicalId = $cron->getName() . '::' . $e->getCode();
+	}
+	echo '[Erreur] ' . $cron->getName() . ' : ' . log::exception($e);
+	if (isset($class) && $class != '') {
+		log::add($class, 'error', __('Erreur sur', __FILE__) . ' ' . $cron->getName() . ' : ' . log::exception($e), $logicalId);
+	} else if (isset($function) && $function != '') {
+		log::add($function, 'error', __('Erreur sur', __FILE__) . ' ' . $cron->getName() . ' : ' . log::exception($e), $logicalId);
+	} else {
+		log::add('cron', 'error', __('Erreur sur', __FILE__) . ' ' . $cron->getName() . ' : ' . log::exception($e), $logicalId);
 	}
 }
 
-require_once dirname(__FILE__) . "/core.inc.php";
+function jeeCronAll_errorHandler($cron, $e) {
+	if ($cron->getOnce() != 1) {
+		$cron->setState('error');
+		$cron->setPID('');
+		echo __('[Erreur master]', __FILE__) . ' ' . $cron->getName() . ' : ' . log::exception($e);
+		log::add('cron', 'error', __('[Erreur master]', __FILE__) . ' ' . $cron->getName() . ' : ' . log::exception($e));
+	}
+}
 
 if (init('cron_id') != '') {
 	if (jeedom::isStarted() && config::byKey('enableCron', 'core', 1, true) == 0) {
@@ -42,11 +56,12 @@ if (init('cron_id') != '') {
 	}
 	$datetime = date('Y-m-d H:i:s');
 	$datetimeStart = strtotime('now');
+	$class = null;
+	$function = null;
 	$cron = cron::byId(init('cron_id'));
 	if (!is_object($cron)) {
 		die();
 	}
-
 	try {
 		$cron->setState('run');
 		$cron->setPID(getmypid());
@@ -90,11 +105,10 @@ if (init('cron_id') != '') {
 				$cron->setState('Not found');
 				$cron->setPID();
 				$cron->setCache('runtime', strtotime('now') - $datetimeStart);
-				log::add('cron', 'error', __('[Erreur] Classe ou fonction non trouvée ', __FILE__) . $cron->getName());
+				log::add('cron', 'error', __('[Erreur] Classe ou fonction non trouvée', __FILE__) . ' ' . $cron->getName());
 				die();
 			}
 		} else {
-
 			$function = $cron->getFunction();
 			if (function_exists($function)) {
 				if ($cron->getDeamon() == 0) {
@@ -131,7 +145,7 @@ if (init('cron_id') != '') {
 				$cron->setState('Not found');
 				$cron->setPID();
 				$cron->setCache('runtime', strtotime('now') - $datetimeStart);
-				log::add('cron', 'error', __('[Erreur] Non trouvée ', __FILE__) . $cron->getName());
+				log::add('cron', 'error', __('[Erreur] Non trouvée', __FILE__) . ' ' . $cron->getName());
 				die();
 			}
 		}
@@ -147,52 +161,24 @@ if (init('cron_id') != '') {
 		}
 		die();
 	} catch (Exception $e) {
-		$cron->setState('error');
-		$cron->setPID('');
-		$cron->setCache('runtime', strtotime('now') - $datetimeStart);
-		$logicalId = config::genKey();
-		if ($e->getCode() != 0) {
-			$logicalId = $cron->getName() . '::' . $e->getCode();
-		}
-		echo '[Erreur] ' . $cron->getName() . ' : ' . log::exception($e);
-
-		if (isset($class) && $class != '') {
-			log::add($class, 'error', __('Erreur sur ', __FILE__) . $cron->getName() . ' : ' . log::exception($e), $logicalId);
-		} else if (isset($function) && $function != '') {
-			log::add($function, 'error', __('Erreur sur ', __FILE__) . $cron->getName() . ' : ' . log::exception($e), $logicalId);
-		} else {
-			log::add('cron', 'error', __('Erreur sur ', __FILE__) . $cron->getName() . ' : ' . log::exception($e), $logicalId);
-		}
+		jeeCron_errorHandler($cron, $class, $function,$datetimeStart, $e);
 	} catch (Error $e) {
-		$cron->setState('error');
-		$cron->setPID('');
-		$cron->setCache('runtime', strtotime('now') - $datetimeStart);
-		$logicalId = config::genKey();
-		if ($e->getCode() != 0) {
-			$logicalId = $cron->getName() . '::' . $e->getCode();
-		}
-		echo '[Erreur] ' . $cron->getName() . ' : ' . log::exception($e);
-		if (isset($class) && $class != '') {
-			log::add($class, 'error', __('Erreur sur ', __FILE__) . $cron->getName() . ' : ' . log::exception($e), $logicalId);
-		} else if (isset($function) && $function != '') {
-			log::add($function, 'error', __('Erreur sur ', __FILE__) . $cron->getName() . ' : ' . log::exception($e), $logicalId);
-		} else {
-			log::add('cron', 'error', __('Erreur sur ', __FILE__) . $cron->getName() . ' : ' . log::exception($e), $logicalId);
-		}
+		jeeCron_errorHandler($cron, $class, $function,$datetimeStart, $e);
 	}
 } else {
 	if (cron::jeeCronRun()) {
 		die();
 	}
 	$started = jeedom::isStarted();
-
+	
 	set_time_limit(59);
 	cron::setPidFile();
-
+	
 	if ($started && config::byKey('enableCron', 'core', 1, true) == 0) {
 		die(__('Tous les crons sont actuellement désactivés', __FILE__));
 	}
-	foreach (cron::all() as $cron) {
+	$datetime = date('Y-m-d H:i:s');
+	foreach((cron::all()) as $cron) {
 		try {
 			if ($cron->getDeamon() == 1) {
 				$cron->refresh();
@@ -206,7 +192,7 @@ if (init('cron_id') != '') {
 			}
 			$duration = strtotime('now') - strtotime($cron->getLastRun());
 			if ($cron->getEnable() == 1 && $cron->getState() != 'run' && $cron->getState() != 'starting' && $cron->getState() != 'stoping') {
-				if ($cron->isDue()) {
+				if ($cron->isDue($datetime)) {
 					$cron->start();
 				}
 			}
@@ -215,26 +201,16 @@ if (init('cron_id') != '') {
 			}
 			switch ($cron->getState()) {
 				case 'starting':
-					$cron->run();
-					break;
+				$cron->run();
+				break;
 				case 'stoping':
-					$cron->halt();
-					break;
+				$cron->halt();
+				break;
 			}
 		} catch (Exception $e) {
-			if ($cron->getOnce() != 1) {
-				$cron->setState('error');
-				$cron->setPID('');
-				echo __('[Erreur master] ', __FILE__) . $cron->getName() . ' : ' . log::exception($e);
-				log::add('cron', 'error', __('[Erreur master] ', __FILE__) . $cron->getName() . ' : ' . $e->getMessage());
-			}
+			jeeCronAll_errorHandler($cron, $e);
 		} catch (Error $e) {
-			if ($cron->getOnce() != 1) {
-				$cron->setState('error');
-				$cron->setPID('');
-				echo __('[Erreur master] ', __FILE__) . $cron->getName() . ' : ' . log::exception($e);
-				log::add('cron', 'error', __('[Erreur master] ', __FILE__) . $cron->getName() . ' : ' . $e->getMessage());
-			}
+			jeeCronAll_errorHandler($cron, $e);
 		}
 	}
 }

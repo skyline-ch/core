@@ -1,23 +1,23 @@
 <?php
 
 /* This file is part of Jeedom.
- *
- * Jeedom is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * Jeedom is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with Jeedom. If not, see <http://www.gnu.org/licenses/>.
- */
+*
+* Jeedom is free software: you can redistribute it and/or modify
+* it under the terms of the GNU General Public License as published by
+* the Free Software Foundation, either version 3 of the License, or
+* (at your option) any later version.
+*
+* Jeedom is distributed in the hope that it will be useful,
+* but WITHOUT ANY WARRANTY; without even the implied warranty of
+* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+* GNU General Public License for more details.
+*
+* You should have received a copy of the GNU General Public License
+* along with Jeedom. If not, see <http://www.gnu.org/licenses/>.
+*/
 
 /* * ***************************Includes********************************* */
-require_once dirname(__FILE__) . '/../../core/php/core.inc.php';
+require_once __DIR__ . '/../../core/php/core.inc.php';
 
 class interactQuery {
 	/*     * *************************Attributs****************************** */
@@ -26,6 +26,7 @@ class interactQuery {
 	private $interactDef_id;
 	private $query;
 	private $actions;
+	private $_changed = false;
 
 	/*     * ***********************Méthodes statiques*************************** */
 
@@ -65,13 +66,36 @@ class interactQuery {
 		return DB::Prepare($sql, $values, DB::FETCH_TYPE_ALL, PDO::FETCH_CLASS, __CLASS__);
 	}
 
-	public static function searchActions($_action) {
+	public static function searchQueries($_query) {
 		$values = array(
-			'actions' => '%' . $_action . '%',
+			'query' => '%' . $_query . '%',
 		);
 		$sql = 'SELECT ' . DB::buildField(__CLASS__) . '
 		FROM interactQuery
-		WHERE actions LIKE :actions';
+		WHERE query LIKE :query';
+		return DB::Prepare($sql, $values, DB::FETCH_TYPE_ALL, PDO::FETCH_CLASS, __CLASS__);
+	}
+
+	public static function searchActions($_action) {
+		if (!is_array($_action)) {
+			$values = array(
+				'actions' => '%' . $_action . '%',
+			);
+			$sql = 'SELECT ' . DB::buildField(__CLASS__) . '
+			FROM interactQuery
+			WHERE actions LIKE :actions';
+		} else {
+			$values = array(
+				'actions' => '%' . $_action[0] . '%',
+			);
+			$sql = 'SELECT ' . DB::buildField(__CLASS__) . '
+			FROM interactQuery
+			WHERE actions LIKE :actions';
+			for ($i = 1; $i < count($_action); $i++) {
+				$values['actions' . $i] = '%' . $_action[$i] . '%';
+				$sql .= ' OR actions LIKE :actions' . $i;
+			}
+		}
 		return DB::Prepare($sql, $values, DB::FETCH_TYPE_ALL, PDO::FETCH_CLASS, __CLASS__);
 	}
 
@@ -92,7 +116,7 @@ class interactQuery {
 	}
 
 	public static function recognize($_query) {
-		$_query = interactDef::sanitizeQuery($_query);
+		$_query = trim(interactDef::sanitizeQuery($_query));
 		if (trim($_query) == '') {
 			return null;
 		}
@@ -104,6 +128,11 @@ class interactQuery {
 		WHERE LOWER(query)=LOWER(:query)';
 		$query = DB::Prepare($sql, $values, DB::FETCH_TYPE_ROW, PDO::FETCH_CLASS, __CLASS__);
 		if (is_object($query)) {
+			$interactDef = $query->getInteractDef();
+			if ($interactDef->getOptions('mustcontain') != '' && !preg_match($interactDef->getOptions('mustcontain'), $_query)) {
+				log::add('interact', 'debug', __('Correspondance trouvée :', __FILE__) . ' ' . $query->getQuery() . ' ' . __('mais ne contient pas :', __FILE__) . ' ' . interactDef::sanitizeQuery($interactDef->getOptions('mustcontain')));
+				return null;
+			}
 			log::add('interact', 'debug', 'Je prends : ' . $query->getQuery());
 			return $query;
 		}
@@ -113,12 +142,17 @@ class interactQuery {
 		GROUP BY id
 		HAVING score > 1';
 		$queries = DB::Prepare($sql, $values, DB::FETCH_TYPE_ALL, PDO::FETCH_CLASS, __CLASS__);
-		if (count($queries) == 0) {
+		if (!is_array($queries) || count($queries) == 0) {
 			$sql = 'SELECT ' . DB::buildField(__CLASS__) . '
 			FROM interactQuery
 			WHERE query=:query';
-			$queries = DB::Prepare($sql, $values, DB::FETCH_TYPE_ROW, PDO::FETCH_CLASS, __CLASS__);
-			if (is_object($queries)) {
+			$query = DB::Prepare($sql, $values, DB::FETCH_TYPE_ROW, PDO::FETCH_CLASS, __CLASS__);
+			if (is_object($query)) {
+				$interactDef = $query->getInteractDef();
+				if ($interactDef->getOptions('mustcontain') != '' && !preg_match($interactDef->getOptions('mustcontain'), $_query)) {
+					log::add('interact', 'debug', __('Correspondance trouvée :', __FILE__) . ' ' . $query->getQuery() . ' ' . __('mais ne contient pas :', __FILE__) . ' ' . interactDef::sanitizeQuery($interactDef->getOptions('mustcontain')));
+					return null;
+				}
 				return $queries;
 			}
 			$queries = self::all();
@@ -127,6 +161,7 @@ class interactQuery {
 		foreach ($queries as $query) {
 			$input = interactDef::sanitizeQuery($query->getQuery());
 			$tags = interactDef::getTagFromQuery($query->getQuery(), $_query);
+			log::add('interact', 'debug', 'Je compare : ' . $_query . ' avec ' . $input.' et tags : '.json_encode($tags));
 			if (count($tags) > 0) {
 				foreach ($tags as $value) {
 					if ($value == "") {
@@ -136,6 +171,11 @@ class interactQuery {
 				$input = str_replace(array_keys($tags), $tags, $input);
 			}
 			$lev = levenshtein($input, $_query);
+			$interactDef = $query->getInteractDef();
+			if ($interactDef->getOptions('mustcontain') != '' && !preg_match($interactDef->getOptions('mustcontain'), $_query)) {
+				log::add('interact', 'debug', __('Correspondance trouvée :', __FILE__) . ' ' . $query->getQuery() . ' ' . __('mais ne contient pas :', __FILE__) . ' ' . interactDef::sanitizeQuery($interactDef->getOptions('mustcontain')));
+				continue;
+			}
 			log::add('interact', 'debug', 'Je compare : ' . $_query . ' avec ' . $input . ' => ' . $lev);
 			if (trim($_query) == trim($input)) {
 				$shortest = 0;
@@ -152,35 +192,34 @@ class interactQuery {
 				$shortest = $lev;
 			}
 		}
+		if ($shortest < 0) {
+			log::add('interact', 'debug', __('Aucune correspondance trouvée', __FILE__));
+			return null;
+		}
 		$weigh = array(1 => config::byKey('interact::weigh1'), 2 => config::byKey('interact::weigh2'), 3 => config::byKey('interact::weigh3'), 4 => config::byKey('interact::weigh4'));
 		foreach (str_word_count($_query, 1) as $word) {
-			if (isset($weigh[strlen($word)])) {
+			if (isset($weigh[strlen($word)]) && is_numeric($weigh[strlen($word)])) {
 				$shortest += $weigh[strlen($word)];
 			}
 		}
 		if (str_word_count($_query) == 1 && config::byKey('interact::confidence1') > 0 && $shortest > config::byKey('interact::confidence1')) {
-			log::add('interact', 'debug', __('Correspondance trop éloigné : ', __FILE__) . $shortest);
+			log::add('interact', 'debug', __('Correspondance trop éloigné :', __FILE__) . ' ' . $shortest);
 			return null;
 		} else if (str_word_count($_query) == 2 && config::byKey('interact::confidence2') > 0 && $shortest > config::byKey('interact::confidence2')) {
-			log::add('interact', 'debug', __('Correspondance trop éloigné : ', __FILE__) . $shortest);
+			log::add('interact', 'debug', __('Correspondance trop éloigné :', __FILE__) . ' ' . $shortest);
 			return null;
 		} else if (str_word_count($_query) == 3 && config::byKey('interact::confidence3') > 0 && $shortest > config::byKey('interact::confidence3')) {
-			log::add('interact', 'debug', __('Correspondance trop éloigné : ', __FILE__) . $shortest);
+			log::add('interact', 'debug', __('Correspondance trop éloigné :', __FILE__) . ' ' . $shortest);
 			return null;
 		} else if (str_word_count($_query) > 3 && config::byKey('interact::confidence') > 0 && $shortest > config::byKey('interact::confidence')) {
-			log::add('interact', 'debug', __('Correspondance trop éloigné : ', __FILE__) . $shortest);
+			log::add('interact', 'debug', __('Correspondance trop éloigné :', __FILE__) . ' ' . $shortest);
 			return null;
 		}
 		if (!is_object($closest)) {
 			log::add('interact', 'debug', __('Aucune phrase trouvée', __FILE__));
 			return null;
 		}
-		$interactDef = $closest->getInteractDef();
-		if ($interactDef->getOptions('mustcontain') != '' && strpos($_query, interactDef::sanitizeQuery($interactDef->getOptions('mustcontain'))) === false) {
-			log::add('interact', 'debug', __('Correspondance trouvée : ', __FILE__) . $query->getQuery() . __(' mais ne contient pas : ', __FILE__) . interactDef::sanitizeQuery($interactDef->getOptions('mustcontain')));
-			return null;
-		}
-		log::add('interact', 'debug', __('J\'ai une correspondance  : ', __FILE__) . $closest->getQuery() . __(' avec ', __FILE__) . $shortest);
+		log::add('interact', 'debug', __('J\'ai une correspondance  :', __FILE__) . ' ' . $closest->getQuery() . ' ' . __('avec', __FILE__) . ' ' . $shortest);
 		return $closest;
 	}
 
@@ -210,7 +249,7 @@ class interactQuery {
 		$return[$_type] = null;
 		$synonyms = self::getQuerySynonym($return['query'], $_type);
 		if ($_type == 'object') {
-			$objects = object::all();
+			$objects = jeeObject::all();
 		} elseif ($_type == 'eqLogic') {
 			if ($_data !== null && is_object($_data['object'])) {
 				$objects = $_data['object']->getEqLogic();
@@ -222,11 +261,11 @@ class interactQuery {
 				$objects = $_data['eqLogic']->getCmd();
 			} elseif ($_data !== null && is_object($_data['object'])) {
 				$objects = array();
-				foreach ($_data['object']->getEqLogic() as $eqLogic) {
+				foreach(($_data['object']->getEqLogic()) as $eqLogic) {
 					if ($eqLogic->getIsEnable() == 0) {
 						continue;
 					}
-					foreach ($eqLogic->getCmd() as $cmd) {
+					foreach(($eqLogic->getCmd()) as $cmd) {
 						$objects[] = $cmd;
 					}
 				}
@@ -322,7 +361,7 @@ class interactQuery {
 				$value = $data['object']->getSummary($data['summary']['key']);
 			}
 			if (trim($value) === '') {
-				$value = object::getGlobalSummary($data['summary']['key']);
+				$value = jeeObject::getGlobalSummary($data['summary']['key']);
 			}
 			if (trim($value) === '') {
 				return '';
@@ -336,7 +375,7 @@ class interactQuery {
 		} else {
 			if ($data['cmd']->getSubtype() == 'slider') {
 				preg_match_all('/(\d+)/', strtolower(sanitizeAccent($data['query'])), $matches);
-				if (isset($matches[0]) && isset($matches[0][0])) {
+				if (isset($matches[0][0])) {
 					$data['cmd_parameters']['slider'] = $matches[0][0];
 				}
 			}
@@ -393,7 +432,7 @@ class interactQuery {
 				}
 			}
 		} catch (Exception $e) {
-			return array('reply' => __('Erreur : ', __FILE__) . $e->getMessage());
+			return array('reply' => __('Erreur :', __FILE__) . ' ' . log::exception($e));
 		}
 		return null;
 	}
@@ -409,7 +448,7 @@ class interactQuery {
 			}
 		}
 		preg_match_all('!\d+!', strtolower(sanitizeAccent($_query)), $matches);
-		if (isset($matches[0]) && isset($matches[0][0])) {
+		if (isset($matches[0][0])) {
 			$operand = $matches[0][0];
 		}
 		if ($operand === null || $operator === null) {
@@ -438,7 +477,7 @@ class interactQuery {
 			$listener->addEvent($data['cmd']->getId());
 			$listener->setOption($options);
 			$listener->save(true);
-			return array('reply' => __('C\'est noté : ', __FILE__) . str_replace('#value#', $data['cmd']->getHumanName(), $test));
+			return array('reply' => __('C\'est noté :', __FILE__) . ' ' . str_replace('#value#', $data['cmd']->getHumanName(), $test));
 		}
 		return null;
 	}
@@ -457,8 +496,8 @@ class interactQuery {
 				return;
 			}
 			$cmd->execCmd(array(
-				'title' => __('Alerte : ', __FILE__) . str_replace('#value#', $_options['name'], $_options['test']) . __(' valeur : ', __FILE__) . $_options['value'],
-				'message' => __('Alerte : ', __FILE__) . str_replace('#value#', $_options['name'], $_options['test']) . __(' valeur : ', __FILE__) . $_options['value'],
+				'title' => __('Alerte :', __FILE__) . ' ' . str_replace('#value#', $_options['name'], $_options['test']) . ' ' . __('valeur :', __FILE__) . ' ' . $_options['value'],
+				'message' => __('Alerte :', __FILE__) . ' ' . str_replace('#value#', $_options['name'], $_options['test']) . ' ' . __('valeur :', __FILE__) . ' ' . $_options['value'],
 			));
 		}
 	}
@@ -668,8 +707,8 @@ class interactQuery {
 			__('Je ne comprends pas', __FILE__),
 		);
 		if (isset($_parameters['profile'])) {
-			$notUnderstood[] = __('Désolé ', __FILE__) . $_parameters['profile'] . __(' je n\'ai pas compris', __FILE__);
-			$notUnderstood[] = __('Désolé ', __FILE__) . $_parameters['profile'] . __(' je n\'ai pas compris ta demande', __FILE__);
+			$notUnderstood[] = __('Désolé', __FILE__) . ' ' . $_parameters['profile'] . ' ' . __('je n\'ai pas compris', __FILE__);
+			$notUnderstood[] = __('Désolé', __FILE__) . ' ' . $_parameters['profile'] . ' ' . __('je n\'ai pas compris ta demande', __FILE__);
 		}
 		$random = rand(0, count($notUnderstood) - 1);
 		return $notUnderstood[$random];
@@ -679,7 +718,7 @@ class interactQuery {
 		$reply = array(
 			__('C\'est fait', __FILE__),
 			__('Ok', __FILE__),
-			__('Voila, c\'est fait', __FILE__),
+			__('Voilà, c\'est fait', __FILE__),
 			__('Bien compris', __FILE__),
 		);
 		$random = rand(0, count($reply) - 1);
@@ -704,7 +743,8 @@ class interactQuery {
 		if ($this->getInteractDef_id() == '') {
 			throw new Exception(__('InteractDef_id ne peut pas être vide', __FILE__));
 		}
-		return DB::save($this);
+		DB::save($this);
+		return true;
 	}
 
 	public function remove() {
@@ -753,14 +793,17 @@ class interactQuery {
 		}
 		if (isset($replace['#time#'])) {
 			$time = str_replace(array('h'), array(':'), $replace['#time#']);
-			if (strlen($time) == 2) {
+			if (strlen($time) == 1) {
+				$time .= ':00';
+			}else if (strlen($time) == 2) {
 				$time .= ':00';
 			} else if (strlen($time) == 3) {
 				$time .= '00';
 			}
+			$time = str_replace('::',':',$time);
 			$executeDate = strtotime($time);
 			if ($executeDate < strtotime('now')) {
-				$executeDate += 3600;
+				$executeDate += 3600 * 24;
 			}
 		}
 		if ($executeDate !== null && !isset($_parameters['execNow'])) {
@@ -835,14 +878,14 @@ class interactQuery {
 						$replace['#valeur#'] .= ' ' . $return;
 					}
 				} catch (Exception $e) {
-					log::add('interact', 'error', __('Erreur lors de l\'exécution de ', __FILE__) . $action['cmd'] . __('. Détails : ', __FILE__) . $e->getMessage());
+					log::add('interact', 'error', __('Erreur lors de l\'exécution de', __FILE__) . ' ' . $action['cmd'] . '. ' . __('Détails :', __FILE__) . ' ' . log::exception($e));
 				} catch (Error $e) {
-					log::add('interact', 'error', __('Erreur lors de l\'exécution de ', __FILE__) . $action['cmd'] . __('. Détails : ', __FILE__) . $e->getMessage());
+					log::add('interact', 'error', __('Erreur lors de l\'exécution de', __FILE__) . ' ' . $action['cmd'] . '. ' . __('Détails :', __FILE__) . ' ' . log::exception($e));
 				}
 			}
 		}
 		if ($interactDef->getOptions('waitBeforeReply') != '' && $interactDef->getOptions('waitBeforeReply') != 0 && is_numeric($interactDef->getOptions('waitBeforeReply'))) {
-			sleep($interactDef->getOptions('waitBeforeReply'));
+			sleep(intval($interactDef->getOptions('waitBeforeReply')));
 		}
 		$reply = jeedom::evaluateExpression($reply);
 		$replace['#valeur#'] = trim($replace['#valeur#']);
@@ -876,8 +919,9 @@ class interactQuery {
 		return $this->interactDef_id;
 	}
 
-	public function setInteractDef_id($interactDef_id) {
-		$this->interactDef_id = $interactDef_id;
+	public function setInteractDef_id($_interactDef_id) {
+		$this->_changed = utils::attrChanged($this->_changed,$this->interactDef_id,$_interactDef_id);
+		$this->interactDef_id = $_interactDef_id;
 		return $this;
 	}
 
@@ -885,8 +929,9 @@ class interactQuery {
 		return $this->id;
 	}
 
-	public function setId($id) {
-		$this->id = $id;
+	public function setId($_id) {
+		$this->_changed = utils::attrChanged($this->_changed,$this->id,$_id);
+		$this->id = $_id;
 		return $this;
 	}
 
@@ -894,8 +939,9 @@ class interactQuery {
 		return $this->query;
 	}
 
-	public function setQuery($query) {
-		$this->query = $query;
+	public function setQuery($_query) {
+		$this->_changed = utils::attrChanged($this->_changed,$this->query,$_query);
+		$this->query = $_query;
 		return $this;
 	}
 
@@ -904,7 +950,18 @@ class interactQuery {
 	}
 
 	public function setActions($_key, $_value) {
-		$this->actions = utils::setJsonAttr($this->actions, $_key, $_value);
+		$actions = utils::setJsonAttr($this->actions, $_key, $_value);
+		$this->_changed = utils::attrChanged($this->_changed,$this->actions,$actions);
+		$this->actions = $actions;
+		return $this;
+	}
+
+	public function getChanged() {
+		return $this->_changed;
+	}
+
+	public function setChanged($_changed) {
+		$this->_changed = $_changed;
 		return $this;
 	}
 

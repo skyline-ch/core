@@ -1,33 +1,37 @@
 <?php
 
 /* This file is part of Jeedom.
- *
- * Jeedom is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * Jeedom is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with Jeedom. If not, see <http://www.gnu.org/licenses/>.
- */
+*
+* Jeedom is free software: you can redistribute it and/or modify
+* it under the terms of the GNU General Public License as published by
+* the Free Software Foundation, either version 3 of the License, or
+* (at your option) any later version.
+*
+* Jeedom is distributed in the hope that it will be useful,
+* but WITHOUT ANY WARRANTY; without even the implied warranty of
+* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+* GNU General Public License for more details.
+*
+* You should have received a copy of the GNU General Public License
+* along with Jeedom. If not, see <http://www.gnu.org/licenses/>.
+*/
 
 try {
-	require_once dirname(__FILE__) . '/../../core/php/core.inc.php';
+	require_once __DIR__ . '/../../core/php/core.inc.php';
 	include_file('core', 'authentification', 'php');
 
-	if (!isConnect('admin')) {
+	if (!isConnect()) {
 		throw new Exception(__('401 - Accès non autorisé', __FILE__), -1234);
 	}
 
-	ajax::init();
+	ajax::init(array('preUploadFile'));
 
 	if (init('action') == 'nbUpdate') {
 		ajax::success(update::nbNeedUpdate());
+	}
+
+	if (!isConnect('admin')) {
+		throw new Exception(__('401 - Accès non autorisé', __FILE__), -1234);
 	}
 
 	if (init('action') == 'all') {
@@ -37,13 +41,21 @@ try {
 			if ($update->getType() == 'plugin') {
 				try {
 					$plugin = plugin::byId($update->getLogicalId());
-					if (is_object($plugin)) {
-						$infos['plugin'] = array();
-						$infos['plugin']['changelog'] = $plugin->getChangelog();
-					}
+					$infos['plugin'] = is_object($plugin) ? utils::o2a($plugin) : array();
 				} catch (Exception $e) {
-
 				}
+			}
+			if ($update->getType() == 'core') {
+				if (config::byKey('core::repo::provider') == 'default') {
+					$infos['branch'] = config::byKey('core::branch', 'core', 'Unknown');
+				}else{
+					$infos['branch'] = config::byKey('core::repo::provider').' - custom';
+				}
+				$theme = 'light';
+				if (strpos(config::byKey('jeedom_theme_main'), 'Dark') !== false) {
+					$theme = 'dark';
+				}
+				$infos['changelog_url'] = config::byKey('doc::base_url', 'core') . '/' . config::byKey('language', 'core', 'fr_FR') . '/core/' . substr(jeedom::version(), 0, 3) . '/changelog?theme=' . $theme;
 			}
 			$return[] = $infos;
 		}
@@ -51,15 +63,17 @@ try {
 	}
 
 	if (init('action') == 'checkAllUpdate') {
+		unautorizedInDemo();
 		update::checkAllUpdate();
 		ajax::success();
 	}
 
 	if (init('action') == 'update') {
+		unautorizedInDemo();
 		log::clear('update');
 		$update = update::byId(init('id'));
 		if (!is_object($update)) {
-			throw new Exception(__('Aucune correspondance pour l\'ID : ' . init('id'), __FILE__));
+			throw new Exception(__('Aucune correspondance pour l\'ID :', __FILE__) . ' ' . init('id'));
 		}
 		try {
 			if ($update->getType() != 'core') {
@@ -74,7 +88,6 @@ try {
 						$cron->start();
 					}
 				} catch (Exception $e) {
-
 				}
 				log::add('update', 'alert', __("[END UPDATE SUCCESS]", __FILE__));
 			}
@@ -88,36 +101,40 @@ try {
 	}
 
 	if (init('action') == 'remove') {
+		unautorizedInDemo();
 		update::findNewUpdateObject();
 		$update = update::byId(init('id'));
 		if (!is_object($update)) {
 			$update = update::byLogicalId(init('id'));
 		}
 		if (!is_object($update)) {
-			throw new Exception(__('Aucune correspondance pour l\'ID : ' . init('id'), __FILE__));
+			throw new Exception(__('Aucune correspondance pour l\'ID :', __FILE__) . ' ' . init('id'));
 		}
 		$update->deleteObjet();
 		ajax::success();
 	}
 
 	if (init('action') == 'checkUpdate') {
+		unautorizedInDemo();
 		$update = update::byId(init('id'));
 		if (!is_object($update)) {
 			$update = update::byLogicalId(init('id'));
 		}
 		if (!is_object($update)) {
-			throw new Exception(__('Aucune correspondance pour l\'ID : ' . init('id'), __FILE__));
+			throw new Exception(__('Aucune correspondance pour l\'ID :', __FILE__) . ' ' . init('id'));
 		}
 		$update->checkUpdate();
 		ajax::success();
 	}
 
 	if (init('action') == 'updateAll') {
+		unautorizedInDemo();
 		jeedom::update(json_decode(init('options', '{}'), true));
 		ajax::success();
 	}
 
 	if (init('action') == 'save') {
+		unautorizedInDemo();
 		$new = false;
 		$update_json = json_decode(init('update'), true);
 		if (isset($update_json['id'])) {
@@ -130,6 +147,7 @@ try {
 			$update = new update();
 			$new = true;
 		}
+		$old_update = $update;
 		utils::a2o($update, $update_json);
 		$update->save();
 		try {
@@ -137,20 +155,25 @@ try {
 		} catch (Exception $e) {
 			if ($new) {
 				throw $e;
+			} else {
+				$update = $old_update;
+				$update->save();
 			}
 		}
 		ajax::success(utils::o2a($update));
 	}
 
 	if (init('action') == 'saves') {
-		utils::processJsonObject('update', init('updates'));
+		unautorizedInDemo();
+		utils::processJsonObject('update', init('updates'),null,false);
 		ajax::success();
 	}
 
 	if (init('action') == 'preUploadFile') {
+		unautorizedInDemo();
 		$uploaddir = '/tmp';
 		if (!file_exists($uploaddir)) {
-			throw new Exception(__('Répertoire de téléversement non trouvé : ', __FILE__) . $uploaddir);
+			throw new Exception(__('Répertoire de téléversement non trouvé :', __FILE__) . ' ' . $uploaddir);
 		}
 		if (!isset($_FILES['file'])) {
 			throw new Exception(__('Aucun fichier trouvé. Vérifiez le paramètre PHP (post size limit)', __FILE__));
@@ -168,8 +191,8 @@ try {
 		ajax::success($uploaddir . '/' . $filename);
 	}
 
-	throw new Exception(__('Aucune méthode correspondante à : ', __FILE__) . init('action'));
+	throw new Exception(__('Aucune méthode correspondante à :', __FILE__) . ' ' . init('action'));
 	/*     * *********Catch exeption*************** */
 } catch (Exception $e) {
-	ajax::error(displayExeption($e), $e->getCode());
+	ajax::error(displayException($e), $e->getCode());
 }

@@ -1,29 +1,29 @@
 <?php
 
 /* This file is part of Jeedom.
- *
- * Jeedom is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * Jeedom is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with Jeedom. If not, see <http://www.gnu.org/licenses/>.
- */
+*
+* Jeedom is free software: you can redistribute it and/or modify
+* it under the terms of the GNU General Public License as published by
+* the Free Software Foundation, either version 3 of the License, or
+* (at your option) any later version.
+*
+* Jeedom is distributed in the hope that it will be useful,
+* but WITHOUT ANY WARRANTY; without even the implied warranty of
+* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+* GNU General Public License for more details.
+*
+* You should have received a copy of the GNU General Public License
+* along with Jeedom. If not, see <http://www.gnu.org/licenses/>.
+*/
 date_default_timezone_set('Europe/Brussels');
-require_once dirname(__FILE__) . '/../../vendor/autoload.php';
-require_once dirname(__FILE__) . '/../config/common.config.php';
-require_once dirname(__FILE__) . '/../class/DB.class.php';
-require_once dirname(__FILE__) . '/../class/config.class.php';
-require_once dirname(__FILE__) . '/../class/jeedom.class.php';
-require_once dirname(__FILE__) . '/../class/plugin.class.php';
-require_once dirname(__FILE__) . '/../class/translate.class.php';
-require_once dirname(__FILE__) . '/utils.inc.php';
+require_once __DIR__ . '/../../vendor/autoload.php';
+require_once __DIR__ . '/../config/common.config.php';
+require_once __DIR__ . '/../class/DB.class.php';
+require_once __DIR__ . '/../class/config.class.php';
+require_once __DIR__ . '/../class/jeedom.class.php';
+require_once __DIR__ . '/../class/plugin.class.php';
+require_once __DIR__ . '/../class/translate.class.php';
+require_once __DIR__ . '/utils.inc.php';
 include_file('core', 'jeedom', 'config');
 include_file('core', 'compatibility', 'config');
 include_file('core', 'utils', 'class');
@@ -35,9 +35,7 @@ try {
 		date_default_timezone_set($configs['timezone']);
 	}
 } catch (Exception $e) {
-
 } catch (Error $e) {
-
 }
 
 try {
@@ -45,57 +43,38 @@ try {
 		log::define_error_reporting($configs['log::level']);
 	}
 } catch (Exception $e) {
-
 } catch (Error $e) {
-
 }
 
-function jeedomCoreAutoload($classname) {
-	try {
-		include_file('core', $classname, 'class');
-	} catch (Exception $e) {
-
-	} catch (Error $e) {
-
-	}
-}
-
-function jeedomPluginAutoload($_classname) {
-	$classname = str_replace(array('Real', 'Cmd'), '', $_classname);
-	$plugin_active = config::byKey('active', $classname, null);
-	if ($plugin_active === null || $plugin_active == '') {
-		$classname = explode('_', $classname)[0];
+function jeedomAutoload($_classname) {
+	/* core class always in /core/class : */
+	$path = __DIR__ . "/../../core/class/$_classname.class.php";
+	if (file_exists($path)) {
+		include_file('core', $_classname, 'class');
+	} else if (substr($_classname, 0, 4) === 'com_') {
+		/* class com_$1 in /core/com/$1.com.php */
+		include_file('core', substr($_classname, 4), 'com');
+	} else if (substr($_classname, 0, 5) === 'repo_') {
+		/* class repo_$1 in /core/repo/$1.repo.php */
+		include_file('core', substr($_classname, 5), 'repo');
+	} else if (strpos($_classname, '\\') === false && strpos($_classname, '/') === false) {
+		/* autoload for plugins : no namespace */
+		$classname = str_replace(array('Real', 'Cmd'), '', $_classname);
 		$plugin_active = config::byKey('active', $classname, null);
-	}
-	try {
-		if ($plugin_active == 1) {
-			include_file('core', $classname, 'class', $classname);
+		if (($plugin_active === null || $plugin_active == '' || $plugin_active == 0) && strpos($classname, '_') !== false) {
+			$classname = explode('_', $classname)[0];
+			$plugin_active = config::byKey('active', $classname, null);
 		}
-	} catch (Exception $e) {
-
-	} catch (Error $e) {
-
+		if ($plugin_active == 1) {
+			try {
+				include_file('core', $classname, 'class', $classname);
+			} catch (Exception $e) {
+				
+			} catch (Error $e) {
+				
+			}
+		}
 	}
 }
 
-function jeedomOtherAutoload($classname) {
-	try {
-		include_file('core', substr($classname, 4), 'com');
-		return;
-	} catch (Exception $e) {
-
-	} catch (Error $e) {
-
-	}
-	try {
-		include_file('core', substr($classname, 5), 'repo');
-		return;
-	} catch (Exception $e) {
-
-	} catch (Error $e) {
-
-	}
-}
-spl_autoload_register('jeedomOtherAutoload', true, true);
-spl_autoload_register('jeedomPluginAutoload', true, true);
-spl_autoload_register('jeedomCoreAutoload', true, true);
+spl_autoload_register('jeedomAutoload', true, true);

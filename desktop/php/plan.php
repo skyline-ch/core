@@ -6,11 +6,17 @@ $planHeader = null;
 $planHeaders = planHeader::all();
 $planHeadersSendToJS = array();
 foreach ($planHeaders as $planHeader_select) {
+	if (!$planHeader_select->hasRight('r')) {
+		continue;
+	}
 	$planHeadersSendToJS[] = array('id' => $planHeader_select->getId(), 'name' => $planHeader_select->getName());
 }
-sendVarToJS('planHeader', $planHeadersSendToJS);
+sendVarToJS('jeephp2js.planHeader', $planHeadersSendToJS);
 if (init('plan_id') == '') {
 	foreach ($planHeaders as $planHeader_select) {
+		if (!$planHeader_select->hasRight('r')) {
+			continue;
+		}
 		if ($planHeader_select->getId() == $_SESSION['user']->getOptions('defaultDashboardPlan')) {
 			$planHeader = $planHeader_select;
 			break;
@@ -18,6 +24,9 @@ if (init('plan_id') == '') {
 	}
 } else {
 	foreach ($planHeaders as $planHeader_select) {
+		if (!$planHeader_select->hasRight('r')) {
+			continue;
+		}
 		if ($planHeader_select->getId() == init('plan_id')) {
 			$planHeader = $planHeader_select;
 			break;
@@ -25,40 +34,28 @@ if (init('plan_id') == '') {
 	}
 }
 if (!is_object($planHeader) && count($planHeaders) > 0) {
-	$planHeader = $planHeaders[0];
+	if ($planHeaders[0]->hasRight('r')) {
+		$planHeader = $planHeaders[0];
+	}
 }
 if (!is_object($planHeader)) {
-	echo '<div class="alert alert-danger">{{Aucun design n\'existe, cliquez <a id="bt_createNewDesign" class="cursor">ici</a> pour en créer une.}}</div>';
-	sendVarToJS('planHeader_id', -1);
+	if (isConnect('admin')) {
+		echo '<div class="alert alert-warning">{{Aucun design n\'existe, cliquez}}' . ' <a id="bt_createNewDesign" class="cursor label alert-info">{{ici}} </a> {{pour en créer un.}}</div>';
+		sendVarToJS('jeephp2js.planHeader_id', -1);
+	} else {
+		sendVarToJS('jeephp2js.planHeader_id', -1);
+	}
+
 } else {
-	sendVarToJS('planHeader_id', $planHeader->getId());
+	sendVarToJS('jeephp2js.planHeader_id', $planHeader->getId());
 }
 ?>
-<style>
-.div_grid {
-  z-index : 998;
-  background-size: 15px 15px;
-  background-image:
-  -webkit-repeating-linear-gradient(90deg, rgba(0, 191, 255, .5), rgba(0, 191, 255, .5) 1px, transparent 1px, transparent 20px),
-  -webkit-repeating-linear-gradient(0deg, rgba(0, 191, 255, .5), rgba(0, 191, 255, .5) 1px, transparent 1px, transparent 20px);
-  background-image:
-  -moz-repeating-linear-gradient(90deg, rgba(0, 191, 255, .5), rgba(0, 191, 255, .5) 1px, transparent 1px, transparent 20px),
-  -moz-repeating-linear-gradient(0deg, rgba(0, 191, 255, .5), rgba(0, 191, 255, .5) 1px, transparent 1px, transparent 20px);
-  background-image:
-  -o-repeating-linear-gradient(90deg, rgba(0, 191, 255, .5), rgba(0, 191, 255, .5) 1px, transparent 1px, transparent 20px),
-  -o-repeating-linear-gradient(0deg, rgba(0, 191, 255, .5), rgba(0, 191, 255, .5) 1px, transparent 1px, transparent 20px);
-  background-image:
-  repeating-linear-gradient(90deg, rgba(0, 191, 255, .5), rgba(0, 191, 255, .5) 1px, transparent 1px, transparent 20px),
-  repeating-linear-gradient(0deg, rgba(0, 191, 255, .5), rgba(0, 191, 255, .5) 1px, transparent 1px, transparent 20px);
-}
-.contextMenu_select {
-  box-shadow: 0 0 2em red !important;
-}
-.widget-shadow-edit{
-  box-shadow: 0 0 2em #96C927 !important;
-}
-</style>
+
 <div class="div_backgroundPlan">
-  <div class="container-fluid div_displayObject" style="position: relative;padding:0;user-select: none;-khtml-user-select: none;-o-user-select: none;-moz-user-select: -moz-none;-webkit-user-select: none;"></div>
+	<div class="container-fluid div_displayObject"></div>
 </div>
-<?php include_file('desktop', 'plan', 'js');?>
+
+<?php
+include_file('desktop/common', 'ui', 'js');
+include_file('desktop', 'plan', 'js');
+?>

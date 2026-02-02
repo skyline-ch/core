@@ -1,17 +1,71 @@
-Reserved for experts, this page allows you to add CSS or JS script
-in addition in Jeedom, which will be executed on each page.
+# Advanced customization
+**Settings → System → Advanced customization**
 
-Accessible by **Administration → Advanced Customization**
+Here you can manage functions **javascript** and rules **CSS** applied on desktop or mobile.
 
-So from this page you can add JS and CSS scripts
-executed everywhere in Jeedom by distinguishing the desktop version from the
-mobile version.
-
-For unsuspecting people who want to discover CSS
-<Http://css.mammouthland.net/premiers-pas-en-css.php>
-
-> **Important**
+> **Attention**
 >
-> Any error in one of these scripts can make Jeedom totally
-> unavailable and it will connect in SSH and delete the
-> customization files to be able to retrieve it
+> Using inappropriate CSS rules can break the display of your Jeedom. Improperly used js functions can cause significant damage to various components of your installation. Remember to generate and outsource a backup before using these functions.
+
+This function uses a particular mode of the Core file editor with two locations :
+
+- desktop / custom : Can contain both files **custom.js** And **custom.css** which will be loaded by the Core in Desktop version.
+- mobile / custom : Can contain both files **custom.js** And **custom.css** which will be loaded by the Core in Mobile version.
+
+In the menu bar of the Core file editor, a button **Enabled** Or **Deactivated** tells you if the Core should load them or not. This option is also available in **Settings → System → Configuration** Interface tab.
+
+> **Noticed**
+>
+> When launching this page, the tree is automatically created, as well as the 4 files with a comment on the first line including the version of the Core which created them.
+
+## Ressources
+
+[CSS: Cascading Style Sheets](https://developer.mozilla.org/en-US/docs/Web/CSS)
+
+[Javascript](https://developer.mozilla.org/en-US/docs/Web/JavaScript)
+
+[Tips for customizing the interface](https://kiboost.github.io/jeedom_docs/jeedomV4Tips/Interface/)
+
+## In case of problem
+
+Injecting JS and / or CSS can make Jeedom inoperative.
+
+In this case, two solutions :
+
+- Open a browser in rescue mode : `IP / index.php?rescue=1`
+- Connect in SSH and delete the customization files : `desktop / custom` and` mobile / custom`
+
+## Example of advanced personalization in CSS
+
+All these examples are to be put in the CSS file (don't forget to activate the advanced customization at the top)
+
+### Removing scrollbars on widgets
+
+```
+.eqLogic-widget.cmds{
+ overflow-x: hidden !important;
+ overflow-y: hidden !important;
+}
+```
+
+### Remove minimum width/height of widgets
+
+This allows you to have smaller widgets (width [min-width], height [min-height]) but be careful, this can make the display less pretty.
+
+```
+div.cmd-widget.content,
+div.cmd-widget .content-sm,
+div.cmd-widget .content-lg,
+div.cmd-widget.content-xs {
+  min-width: unset !important;
+  min-height: unset !important;
+}
+```
+
+### Added margins between object names and equipment on the dashboard 
+
+```
+.div_object legend .objectDashLegend {
+  margin-bottom: 5px;
+}
+```

@@ -1,48 +1,48 @@
 <?php
 
 /* This file is part of Jeedom.
- *
- * Jeedom is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * Jeedom is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with Jeedom. If not, see <http://www.gnu.org/licenses/>.
- */
-require_once dirname(__FILE__) . '/core.inc.php';
+*
+* Jeedom is free software: you can redistribute it and/or modify
+* it under the terms of the GNU General Public License as published by
+* the Free Software Foundation, either version 3 of the License, or
+* (at your option) any later version.
+*
+* Jeedom is distributed in the hope that it will be useful,
+* but WITHOUT ANY WARRANTY; without even the implied warranty of
+* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+* GNU General Public License for more details.
+*
+* You should have received a copy of the GNU General Public License
+* along with Jeedom. If not, see <http://www.gnu.org/licenses/>.
+*/
+require_once __DIR__ . '/core.inc.php';
 
-$configs = config::byKeys(array('session_lifetime', 'sso:allowRemoteUser'));
+$configs = config::byKeys(array('session_lifetime', 'sso:allowRemoteUser', 'sso:remoteUserHeader'));
 
-$session_lifetime = $configs['session_lifetime'];
-if (!is_numeric($session_lifetime)) {
-	$session_lifetime = 24;
-}
-ini_set('session.gc_maxlifetime', $session_lifetime * 3600);
-ini_set('session.use_cookies', 1);
-ini_set('session.cookie_httponly', 1);
-if (isset($_COOKIE['sess_id'])) {
-	session_id($_COOKIE['sess_id']);
+if (session_status() == PHP_SESSION_DISABLED || !isset($_SESSION)) {
+	$session_lifetime = $configs['session_lifetime'];
+	if (!is_numeric($session_lifetime)) {
+		$session_lifetime = 24;
+	}
+	ini_set('session.gc_maxlifetime', $session_lifetime * 3600);
+	ini_set('session.cookie_lifetime', $session_lifetime * 3600);
+	ini_set('session.use_cookies', 1);
+	ini_set('session.cookie_httponly', 1);
+	ini_set('session.use_only_cookies', 1);
+	ini_set('session.sid_length', 64);
+	ini_set('session.hash_function', 'sha256');
+	ini_set('session.cookie_samesite', 'Strict');
+	ini_set('session.use_strict_mode', 1);
+	if (isset($_SERVER['HTTP_X_FORWARDED_PROTO']) && $_SERVER['HTTP_X_FORWARDED_PROTO'] == 'https') {
+		ini_set('session.cookie_secure', 1);
+		session_name('__Host-PHPSESSID');
+	}
+}else if(isset($_COOKIE['__Host-PHPSESSID']) && session_id() !== $_COOKIE['__Host-PHPSESSID']) {
+	throw new Exception('session does not exist');
 }
 @session_start();
-if (!headers_sent()) {
-	$cache = cache::byKey('current_sessions');
-	$sessions = $cache->getValue(array());
-	if (!isset($sessions[session_id()])) {
-		$sessions[session_id()] = array();
-	}
-	$sessions[session_id()]['datetime'] = date('Y-m-d H:i:s');
-	$sessions[session_id()]['ip'] = getClientIp();
-	cache::set('current_sessions', $sessions);
-	setcookie('sess_id', session_id(), time() + 24 * 3600, "/", '', false, true);
-}
+$_SESSION['ip'] = getClientIp();
 @session_write_close();
-
 if (user::isBan()) {
 	header("Statut: 404 Page non trouvée");
 	header('HTTP/1.0 404 Not Found');
@@ -52,27 +52,22 @@ if (user::isBan()) {
 	die();
 }
 
-if (!isConnect() && isset($_COOKIE['registerDevice'])) {
-
-	if (loginByHash($_COOKIE['registerDevice'])) {
-		setcookie('registerDevice', $_COOKIE['registerDevice'], time() + 365 * 24 * 3600, "/", '', false, true);
-		if (isset($_COOKIE['jeedom_token'])) {
-			@session_start();
-			$_SESSION['jeedom_token'] = $_COOKIE['jeedom_token'];
-			@session_write_close();
-		}
+if (!isConnect() && isset($_COOKIE['registerDevice']) && !loginByHash($_COOKIE['registerDevice'])) {
+	if (version_compare(PHP_VERSION, '7.3') >= 0) {
+		setcookie('registerDevice', '', ['expires' => time() + 365 * 24 * 3600, 'samesite' => 'Strict', 'httponly' => true, 'path' => '/', 'secure' => (isset($_SERVER['HTTP_X_FORWARDED_PROTO']) && $_SERVER['HTTP_X_FORWARDED_PROTO'] == 'https')]);
 	} else {
-		setcookie('registerDevice', '', time() - 3600, "/", '', false, true);
+		setcookie('registerDevice', '', time() + 365 * 24 * 3600, "/; samesite=Strict", '', (isset($_SERVER['HTTP_X_FORWARDED_PROTO']) && $_SERVER['HTTP_X_FORWARDED_PROTO'] == 'https'), true);
 	}
 }
 
 if (!isConnect() && $configs['sso:allowRemoteUser'] == 1) {
-	$user = user::byLogin($_SERVER['REMOTE_USER']);
+	$header_value = ($configs['sso:remoteUserHeader'] != '') ? $_SERVER[$configs['sso:remoteUserHeader']] : $_SERVER['REMOTE_USER'];
+	$user = user::byLogin($header_value);
 	if (is_object($user) && $user->getEnable() == 1) {
 		@session_start();
 		$_SESSION['user'] = $user;
 		@session_write_close();
-		log::add('connection', 'info', __('Connexion de l\'utilisateur par REMOTE_USER : ', __FILE__) . $user->getLogin());
+		log::add('connection', 'info', __('Connexion de l\'utilisateur par REMOTE_USER :', __FILE__) . ' ' . $user->getLogin());
 	}
 }
 
@@ -82,6 +77,9 @@ if (!isConnect() && init('auth') != '') {
 
 if (init('logout') == 1) {
 	logout();
+	echo '<script type="text/javascript">';
+	echo "window.location.href='index.php';";
+	echo '</script>';
 }
 
 /* * **************************Definition des function************************** */
@@ -99,10 +97,6 @@ function login($_login, $_password, $_twoFactor = null) {
 		return false;
 	}
 	$sMdp = (!is_sha512($_password)) ? sha512($_password) : $_password;
-	if (network::getUserLocation() == 'external' && $_login == 'admin' && $sMdp == sha512('admin')) {
-		sleep(5);
-		return false;
-	}
 	if (network::getUserLocation() != 'internal' && $user->getOptions('twoFactorAuthentification', 0) == 1 && $user->getOptions('twoFactorAuthentificationSecret') != '') {
 		if (trim($_twoFactor) == '' || $_twoFactor === null || !$user->validateTwoFactorCode($_twoFactor)) {
 			user::failedLogin();
@@ -110,18 +104,11 @@ function login($_login, $_password, $_twoFactor = null) {
 			return false;
 		}
 	}
-	$cache = cache::byKey('current_sessions');
-	$sessions = $cache->getValue(array());
-	if (!isset($sessions[session_id()])) {
-		$sessions[session_id()] = array();
-	}
-	$sessions[session_id()]['login'] = $user->getLogin();
-	$sessions[session_id()]['user_id'] = $user->getId();
-	cache::set('current_sessions', $sessions);
 	@session_start();
 	$_SESSION['user'] = $user;
+	session_regenerate_id(true);
 	@session_write_close();
-	log::add('connection', 'info', __('Connexion de l\'utilisateur : ', __FILE__) . $_login);
+	log::add('connection', 'info', __('Connexion de l\'utilisateur :', __FILE__) . ' ' . $_login);
 	return true;
 }
 
@@ -143,48 +130,36 @@ function loginByHash($_key) {
 		sleep(5);
 		return false;
 	}
+	$rdk = sha512($key[1]);
 	$registerDevice = $user->getOptions('registerDevice', array());
-	if (!isset($registerDevice[sha512($key[1])])) {
+	if (!is_array($registerDevice) || !isset($registerDevice[$rdk])) {
 		user::failedLogin();
 		sleep(5);
 		return false;
 	}
-	$cache = cache::byKey('current_sessions');
-	$sessions = $cache->getValue(array());
-	if (!isset($sessions[session_id()])) {
-		$sessions[session_id()] = array();
-	}
-	$sessions[session_id()]['login'] = $user->getLogin();
-	$sessions[session_id()]['user_id'] = $user->getId();
-	cache::set('current_sessions', $sessions);
+	$registerDevice[$rdk] = array(
+		'datetime' => date('Y-m-d H:i:s'),
+		'ip' => getClientIp(),
+		'session_id' => session_id(),
+	);
+	$user->setOptions('registerDevice', $registerDevice);
+	$user->save();
 	@session_start();
 	$_SESSION['user'] = $user;
 	@session_write_close();
-	$registerDevice = $_SESSION['user']->getOptions('registerDevice', array());
-	if (!is_array($registerDevice)) {
-		$registerDevice = array();
-	}
-	$registerDevice[sha512($key[1])] = array();
-	$registerDevice[sha512($key[1])]['datetime'] = date('Y-m-d H:i:s');
-	$registerDevice[sha512($key[1])]['ip'] = getClientIp();
-	$registerDevice[sha512($key[1])]['session_id'] = session_id();
-	@session_start();
-	$_SESSION['user']->setOptions('registerDevice', $registerDevice);
-	$_SESSION['user']->save();
-	@session_write_close();
-	if (!isset($_COOKIE['jeedom_token'])) {
-		setcookie('jeedom_token', ajax::getToken(), time() + 365 * 24 * 3600, "/", '', false, true);
-	}
-	log::add('connection', 'info', __('Connexion de l\'utilisateur par clef : ', __FILE__) . $user->getLogin());
+	log::add('connection', 'info', __('Connexion de l\'utilisateur par clef :', __FILE__) . ' ' . $user->getLogin());
 	return true;
 }
 
 function logout() {
 	@session_start();
-	setcookie('sess_id', '', time() - 3600, "/", '', false, true);
-	setcookie('PHPSESSID', '', time() - 3600, "/", '', false, true);
-	setcookie('registerDevice', '', time() - 3600, "/", '', false, true);
-	setcookie('jeedom_token', '', time() - 3600, "/", '', false, true);
+	if (version_compare(PHP_VERSION, '7.3') >= 0) {
+		setcookie('registerDevice', '', ['expires' => time() + 365 * 24 * 3600, 'samesite' => 'Strict', 'httponly' => true, 'path' => '/', 'secure' => (isset($_SERVER['HTTP_X_FORWARDED_PROTO']) && $_SERVER['HTTP_X_FORWARDED_PROTO'] == 'https')]);
+		setcookie('__Host-PHPSESSID', '', ['expires' => time() + 365 * 24 * 3600, 'samesite' => 'Strict', 'httponly' => true, 'path' => '/', 'secure' => (isset($_SERVER['HTTP_X_FORWARDED_PROTO']) && $_SERVER['HTTP_X_FORWARDED_PROTO'] == 'https')]);
+	} else {
+		setcookie('registerDevice', '', time() + 365 * 24 * 3600, "/; samesite=Strict", '', (isset($_SERVER['HTTP_X_FORWARDED_PROTO']) && $_SERVER['HTTP_X_FORWARDED_PROTO'] == 'https'), true);
+		setcookie('__Host-PHPSESSID', '', time() + 365 * 24 * 3600, "/; samesite=Strict", '', (isset($_SERVER['HTTP_X_FORWARDED_PROTO']) && $_SERVER['HTTP_X_FORWARDED_PROTO'] == 'https'), true);
+	}
 	session_unset();
 	session_destroy();
 	return;

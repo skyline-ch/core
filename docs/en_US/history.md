@@ -1,194 +1,105 @@
-Important part in a software: the historization part, true
-memory of it. It is possible in Jeedom to historize anywhere
-which information type command (binary or digital). this will
-Thus, for example, it will be possible to record a temperature curve,
-consumption or the openings of a door ...
+# Historique
+**Analysis → History**
 
-Principle
-========
+Important part in software : the historization part, a true memory of it. It is possible in Jeedom to log any information type command (binary or digital). This will allow you, for example, to log a temperature curve, consumption, the openings of a door, etc.
 
-Here is described the principle of historization of Jeedom. It is not
-necessary to understand that if you encounter any worries
-of history or that you want to change the settings of
-historicization. The default settings are suitable for most
-case.
+![Historical](./images/history.gif)
 
-archiving
----------
+### Principle of historization
 
-Data archiving allows Jeedom to reduce the amount of data
-kept in memory. This makes it possible not to use too much space and
-not to slow down the system. Indeed, if you keep all
-measures, this makes all the more points to display and so can
-considerably lengthen the time to render a graph. In case
-Too many points, it can even crash
-the graph display.
+### Archivage
 
-Archiving is a task that starts at night and compacts
-data recovered in the day. By default Jeedom recovers all
-data older than 2h and in fact 1h packets (ie one
-average, a minimum or maximum depending on the settings). So we have
-here 2 parameters, one for packet size and another for knowing
-from when to do it (for default callback these are packets
-1 hour with data that have more than 2 hours of seniority).
+Data archiving allows Jeedom to reduce the amount of data kept in memory. This allows not to use too much space and does not slow down the system. Indeed, if you keep all the measurements, this makes all the more points to display and therefore it can considerably lengthen the times to render a graph. If there are too many points, it may even cause the graph display to crash.
 
-> **Tip**
+Archiving is a task that starts at night and compacts the data recovered during the day. By default Jeedom retrieves all older data of 2 hours and makes 1 hour packets of it (either an average, a minimum or a maximum depending on the settings). So here we have two parameters, one for packet size and another to know when to do it (by default, these are 1 hour packets with data that are more than 2 hours old).
+
+> **Advice**
 >
-> If you have followed correctly you should have a high precision on the
-> Last 2 hours only. Yet when I connect at 17h,
-> I have a precision on the last 17 hours. Why ? In fact,
-> to avoid consuming resources unnecessarily, the task that makes
-> Archiving only takes place once a day, in the evening.
+> If you have followed well you should have a high precision on the last 2 hours only. However when I connect at 5 p.m., I have a precision on the last 17 hours. For what ? In fact, to avoid consuming resources unnecessarily, the task of archiving takes place only once a day, in the evening.
 
 > **Important**
 >
-> Of course, this archiving principle only applies to
-> digital type; on the binary type commands, Jeedom only keeps
-> the dates of change of state.
+> Of course, this archiving principle only applies to digital orders. On binary type orders, Jeedom only keeps the dates of change of state.
 
-Display a chart
-========================
+### Viewing a graph
 
-There are several ways to access the history:
+There are several ways to access the history :
 
--   by putting a graph area in a view (see below),
+- By clicking on the desired command in a widget,
+- By going to the history page which allows you to superimpose different curves and combine styles (area, curve, bar),
+- On mobile while remaining pressed on the widget in question,
+- By putting a graph area in a view (see below),
+- By inserting a graph on a Design.
 
--   by clicking on the desired command in a widget,
+From Core v4.2 it is also possible to display a curve at the bottom of the tile of a device.
 
--   by going to the historical page which allows to superpose
-    different curves and combine styles (area, curve, bar)
+## Historique
 
--   in mobile while staying pressed on the widget in question
+If you display a graph via the history page, you have access to several display options, above the graph :
 
-If you are viewing a graphic through the history page or by clicking
-the widget, you have access to several display options:
+- **Period** : The display period, including historical data between these two dates. By default, depending on the setting *Display period graphics by default* In *Settings → System → Configuration / Equipment*.
+- **Group** : Offers several grouping options (Sum per hour, etc.).
+- **Display type** : Display in *Line*, *Area*, Or *Rod*. Option saved on the order and used from the Dashboard.
+- **Variation** : Displays the difference in value from the previous point. Option saved on the order and used from the Dashboard.
+- **Stairs** : Displays the curve as a staircase or a continuous display. Option saved on the order and used from the Dashboard.
+- **Compare** : Compare the curve between different periods.
 
-We find in the upper right the display period (here on the last
-week because, by default I want it to be only a week - see
-2 paragraphs above), then come the parameters of the curve
-(These settings are kept from one display to another, so you do not have
-than configure them once).
-
--   **Staircase**: Displays the curve in the form of a
-    staircase or continuous display.
-
--   **Variation**: Displays the difference in value from the
-    previous point.
-
--   **Line**: Displays the chart as lines.
-
--   **Area**: Displays the chart as an area.
-
--   **Column** \ *: Displays the graph as bars.
-
-Graphics on views and designs
-=====================================
-
-You can also display the graphs on the views (we'll see here
-the configuration options and not how to do it, for that you have to
-return views or designs based on the document). here is
-the options :
-
-Once a data is activated, you can choose:
-
--   **Color**: the color of the curve.
-
--   **Type**: The type of chart (area, row or column).
-
--   **Scale**: since you can put several curves (data)
-    on the same graph, it is possible to distinguish the scales
-    (right or left).
-
--   **Staircase**: Displays the curve in the form of a
-    staircase or continuous display
-
--   **Stack**: allows you to stack the values ​​of the curves (see
-    below for the result).
-
--   **Variation**: Displays the difference in value from the
-    previous point.
-
-Option on the history page
-===============================
-
-The history page gives you access to some additional options
-
-Calculated history
-------------------
-
-Displays a curve based on a multiple calculation
-command (you can do everything, + - / \ * absolute value ... see
-PHP documentation for some function). Ex:
-abs (* \ [Garden \] \ [Hygrometry \] \ [Temperature \] * - * \ [Space of
-Life \] \ [Humidity \] \ [Temperature \] *)
-
-You also have access to a calculation formulas management that allows you
-save them for easier viewing
-
-> **Tip**
+> **Advice**
 >
-> Just click on the name of the object to unfold it;
-> appear the historized commands that can be graphed.
+> To avoid any handling error, these options saved in the commands are only active when a single curve is displayed.
+> 
+In the upper part where the curves are displayed, there are also several options :
 
-Order History
-----------------------
+On the left:
 
-Before each data that can be graphed, you will find two icons:
+- **Zoom** : A shortcut area allowing you to adjust the horizontal zoom to the desired duration, if the data is loaded.
 
--   **Trash**: Deletes the recorded data; then
-    of click, Jeedom asks whether to delete the data before a
-    certain date or all the data.
+On the right:
 
--   **Arrow**: allows to have a CSV export of the historized data.
+- **Visible vertical axes** : Allows you to hide or display all vertical axes.
+- **Vertical axis scale** : Allows you to activate or not the scaling of each vertical axis independently of the others.
+- **Grouping of vertical axes by units** : Allows to group the scale of curves and vertical axes according to their unit. All curves with the same unit will have the same scale.
+- **Opacity of the curves under the mouse** : Allows you to deactivate the highlighting of the curve when a value is displayed at the mouse cursor. For example when two curves do not have their values at the same times.
 
-Invalid value deletion
-=================================
+Under the curves, you can also use the contextual menu on each legend to isolate a curve, display / hide its axis, change its color, ...
 
-Sometimes you may have inconsistent values ​​about
-graphics. This is often due to a concern for the interpretation of the
-value. It is possible to delete or change the value of the point in
-question, by clicking on it directly on the graph; of
-Plus, you can set the minimum and maximum allowed so
-to avoid future problems.
+### Graphic on views and designs
 
-timeline
-========
+You can also display the graphs on the views (we will see here the configuration options and not how to do it, for that you have to go to the documentation of the views or designs in function). Here are the options :
 
-The timeline shows some events of your home automation form
-chronological.
+Once a data is activated, you can choose :
+- **Color** : The color of the curve.
+- **Kind** : The type of graph (area, line or column).
+- **Ladder** : Since you can put several curves (data) on the same graph, it is possible to distinguish the scales (right or left).
+- **Stairs** : Displays the curve as a staircase or a continuous display.
+- **Stack** : Stack the values of the curves (see below for the result).
+- **Variation** : Displays the difference in value from the previous point.
 
-To see them, you must first activate the tracking on the timeline of
-desired commands or scenarios:
+### Option on the history page
 
--   **Scenario**: either directly on the scenario page, or on the
-    Scenarios summary page to do it in "mass"
+The history page gives access to some additional options
 
--   **Command**: either in the advanced configuration of the command,
-    in the configuration of the history to do it in "mass"
+#### Calculated history
 
-> **Tip**
+Allows to display a curve according to a calculation on several commands (you can pretty much do anything, + - / \* absolute value ... see PHP documentation for some functions). For example :
+
+`abs(*\ [Garden \] \ [Hygrometry \] \ [Temperature \]* - *\ [Living space \] \ [Hygrometry \] \ [Temperature \]*)`
+
+You also have access to a management of calculation formulas which allows you to save them to re-display them more easily.
+
+> **Advice**
 >
-> You have access to the summary windows of the scenarios or the
-> history configuration directly from the page of
-> timeline.
+> When you have saved calculations, these are available on the left in **My Calculations**.
 
-Once you have enabled tracking in the timeline of commands and
-scenarios, you can see them appear on the timeline.
+#### Command history
 
-> **Important**
->
-> You have to wait for new events after activating the follow-up
-> on the timeline before seeing them appear.
+In front of each data that can be displayed, you will find two icons :
 
-The cards on the timeline display:
+- **Garbage can** : Allows you to delete the recorded data; when clicking, Jeedom asks whether to delete the data before a certain date or all the data.
+- **Arrow** : Enables CSV export of historical data.
 
--   **Action command**: in red background, an icon on the right allows you
-    to display the advanced configuration window of the command
+### Inconsistent value removal
 
--   **Info command**: in blue background, an icon on the right allows you
-    to display the advanced configuration window of the command
-
--   **Scenario**: in gray background, you have 2 icons: one to display
-    the log of the scenario and one to go on the scenario
+Sometimes you may have inconsistent values on the graphs. This is often due to a concern with interpreting the value. It is possible to delete or change the value of the point in question, by clicking on it directly on the graph; in addition, you can adjust the minimum and maximum allowed to avoid future problems.
 
 

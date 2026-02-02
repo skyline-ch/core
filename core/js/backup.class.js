@@ -1,4 +1,3 @@
-
 /* This file is part of Jeedom.
  *
  * Jeedom is free software: you can redistribute it and/or modify
@@ -15,11 +14,9 @@
  * along with Jeedom. If not, see <http://www.gnu.org/licenses/>.
  */
 
+jeedom.backup = function() {};
 
- jeedom.backup = function() {
- };
-
- jeedom.backup.backup = function(_params) {
+jeedom.backup.backup = function(_params) {
     var paramsRequired = [];
     var paramsSpecifics = {};
     try {
@@ -28,15 +25,14 @@
         (_params.error || paramsSpecifics.error || jeedom.private.default_params.error)(e);
         return;
     }
-    var params = $.extend({}, jeedom.private.default_params, paramsSpecifics, _params || {});
+    var params = domUtils.extend({}, jeedom.private.default_params, paramsSpecifics, _params || {});
     var paramsAJAX = jeedom.private.getParamsAJAX(params);
     paramsAJAX.url = 'core/ajax/jeedom.ajax.php';
     paramsAJAX.data = {
         action: 'backup',
     };
-    $.ajax(paramsAJAX);
-};
-
+    domUtils.ajax(paramsAJAX);
+}
 
 jeedom.backup.restoreLocal = function(_params) {
     var paramsRequired = [];
@@ -47,15 +43,15 @@ jeedom.backup.restoreLocal = function(_params) {
         (_params.error || paramsSpecifics.error || jeedom.private.default_params.error)(e);
         return;
     }
-    var params = $.extend({}, jeedom.private.default_params, paramsSpecifics, _params || {});
+    var params = domUtils.extend({}, jeedom.private.default_params, paramsSpecifics, _params || {});
     var paramsAJAX = jeedom.private.getParamsAJAX(params);
     paramsAJAX.url = 'core/ajax/jeedom.ajax.php';
     paramsAJAX.data = {
         action: 'restore',
-        backup : _params.backup
+        backup: _params.backup
     };
-    $.ajax(paramsAJAX);
-};
+    domUtils.ajax(paramsAJAX);
+}
 
 jeedom.backup.remove = function(_params) {
     var paramsRequired = ['backup'];
@@ -66,15 +62,15 @@ jeedom.backup.remove = function(_params) {
         (_params.error || paramsSpecifics.error || jeedom.private.default_params.error)(e);
         return;
     }
-    var params = $.extend({}, jeedom.private.default_params, paramsSpecifics, _params || {});
+    var params = domUtils.extend({}, jeedom.private.default_params, paramsSpecifics, _params || {});
     var paramsAJAX = jeedom.private.getParamsAJAX(params);
     paramsAJAX.url = 'core/ajax/jeedom.ajax.php';
     paramsAJAX.data = {
         action: 'removeBackup',
         backup: _params.backup,
     };
-    $.ajax(paramsAJAX);
-};
+    domUtils.ajax(paramsAJAX);
+}
 
 jeedom.backup.uploadCloud = function(_params) {
     var paramsRequired = ['backup'];
@@ -85,18 +81,18 @@ jeedom.backup.uploadCloud = function(_params) {
         (_params.error || paramsSpecifics.error || jeedom.private.default_params.error)(e);
         return;
     }
-    var params = $.extend({}, jeedom.private.default_params, paramsSpecifics, _params || {});
+    var params = domUtils.extend({}, jeedom.private.default_params, paramsSpecifics, _params || {});
     var paramsAJAX = jeedom.private.getParamsAJAX(params);
     paramsAJAX.url = 'core/ajax/repo.ajax.php';
     paramsAJAX.data = {
         action: 'uploadCloud',
         backup: _params.backup
     };
-    $.ajax(paramsAJAX);
-};
+    domUtils.ajax(paramsAJAX);
+}
 
 jeedom.backup.restoreCloud = function(_params) {
-    var paramsRequired = ['backup','repo'];
+    var paramsRequired = ['backup', 'repo'];
     var paramsSpecifics = {};
     try {
         jeedom.private.checkParamsRequired(_params || {}, paramsRequired);
@@ -104,7 +100,7 @@ jeedom.backup.restoreCloud = function(_params) {
         (_params.error || paramsSpecifics.error || jeedom.private.default_params.error)(e);
         return;
     }
-    var params = $.extend({}, jeedom.private.default_params, paramsSpecifics, _params || {});
+    var params = domUtils.extend({}, jeedom.private.default_params, paramsSpecifics, _params || {});
     var paramsAJAX = jeedom.private.getParamsAJAX(params);
     paramsAJAX.url = 'core/ajax/repo.ajax.php';
     paramsAJAX.data = {
@@ -112,8 +108,8 @@ jeedom.backup.restoreCloud = function(_params) {
         backup: _params.backup,
         repo: _params.repo,
     };
-    $.ajax(paramsAJAX);
-};
+    domUtils.ajax(paramsAJAX);
+}
 
 jeedom.backup.list = function(_params) {
     var paramsRequired = [];
@@ -124,11 +120,11 @@ jeedom.backup.list = function(_params) {
         (_params.error || paramsSpecifics.error || jeedom.private.default_params.error)(e);
         return;
     }
-    var params = $.extend({}, jeedom.private.default_params, paramsSpecifics, _params || {});
+    var params = domUtils.extend({}, jeedom.private.default_params, paramsSpecifics, _params || {});
     var paramsAJAX = jeedom.private.getParamsAJAX(params);
     paramsAJAX.url = 'core/ajax/jeedom.ajax.php';
     paramsAJAX.data = {
         action: 'listBackup',
     };
-    $.ajax(paramsAJAX);
-};
+    domUtils.ajax(paramsAJAX);
+}

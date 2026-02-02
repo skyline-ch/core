@@ -1,5 +1,8 @@
 <?php
 
+/** @entrypoint */
+/** @console */
+
 /* This file is part of Jeedom.
  *
  * Jeedom is free software: you can redistribute it and/or modify
@@ -16,28 +19,14 @@
  * along with Jeedom. If not, see <http://www.gnu.org/licenses/>.
  */
 
-if (php_sapi_name() != 'cli' || isset($_SERVER['REQUEST_METHOD']) || !isset($_SERVER['argc'])) {
-	header("Statut: 404 Page non trouvée");
-	header('HTTP/1.0 404 Not Found');
-	$_SERVER['REDIRECT_STATUS'] = 404;
-	echo "<h1>404 Non trouvé</h1>";
-	echo "La page que vous demandez ne peut être trouvée.";
-	exit();
-}
-require_once dirname(__FILE__) . "/core.inc.php";
-if (isset($argv)) {
-	foreach ($argv as $arg) {
-		$argList = explode('=', $arg);
-		if (isset($argList[0]) && isset($argList[1])) {
-			$_GET[$argList[0]] = $argList[1];
-		}
-	}
-}
+require_once __DIR__ . '/console.php';
+
+require_once __DIR__ . "/core.inc.php";
 
 $cache = cache::byKey(init('key'))->getValue();
 if (!isset($cache['scenarioExpression'])) {
-	if ($cache['scenario'] != null) {
-		$cache['scenario']->setLog(__('Lancement en arrière-plan non trouvé : ', __FILE__) . init('key'));
+	if ($cache['scenario'] !== null) {
+		$cache['scenario']->setLog(__('Lancement en arrière-plan non trouvé :', __FILE__) . ' ' . init('key'));
 		$cache['scenario']->persistLog();
 	}
 	die();
@@ -48,7 +37,7 @@ if (!isset($cache['scenario'])) {
 cache::byKey(init('key'))->remove();
 if ($cache['scenario'] != null) {
 	$cache['scenario']->clearLog();
-	$cache['scenario']->setLog(__('Lancement en arrière-plan de : ', __FILE__) . init('key'));
+	$cache['scenario']->setLog(__('Lancement en arrière-plan de :', __FILE__) . ' ' . init('key'));
 }
 $cache['scenarioExpression']->setOptions('background', 0);
 $cache['scenarioExpression']->execute($cache['scenario']);

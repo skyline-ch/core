@@ -1,27 +1,20 @@
 {
-    "name": "jeedom/core",
-    "description": "Software for home automation",
-    "require": {
-        "mtdowling/cron-expression": "~1.0",
-        "symfony/expression-language": "~2.6",
-        "league/oauth2-client": "^1.0",
-        "doctrine/cache": "^1.4.0",
-        "monolog/monolog": "^1.17",
-        "knplabs/github-api": "^1.7",
-        "pragmarx/google2fa": "^1.0",
-        "touki/ftp": "^1.2"
+  "require": {
+    "abbadon1334/sun-position-spa-php" : "^2",
+    "dragonmantank/cron-expression": "^3",
+    "symfony/expression-language": "5 - 7",
+    "pragmarx/google2fa-qrcode": "^3",
+    "bacon/bacon-qr-code": "2 - 3",
+    "influxdata/influxdb-client-php": "^3",
+    "psr/log": "^1.1",
+    "php": ">=7.4"
+  },
+  "config": {
+    "allow-plugins": {
+      "php-http/discovery": true
     },
-    "license": "GPL",
-    "config": {
-       "preferred-install": "dist",
-       "platform": {
-           "php": "5.6.0"
-       }
-   },
-   "authors": [
-    {
-        "name": "Loic",
-        "email": "loic@jeedom.com"
+    "platform": {
+      "php": "7.4"
     }
-]
+  }
 }
